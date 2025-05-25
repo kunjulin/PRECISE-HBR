@@ -5,6 +5,9 @@
         <p>歡迎, <strong>{{ current_user.name or '使用者' }}</strong>!</p> {# Default to '使用者' if name is None #}
         <p>Email: {{ current_user.email or '未提供' }}</p>
         <p>FHIR User URL: {{ current_user.fhir_user_url or '未提供' }}</p>
+
+        {# DEBUG: Display launch_token #}
+        <p><small>Debug Launch Token: {{ session.get('launch_token', 'Not set') }}</small></p>
         
         {% if session.patient_id %}
             <p>目前病患 ID: <strong>{{ session.patient_id }}</strong></p>
@@ -12,14 +15,27 @@
             
             {% if patient_data and patient_data.id %}
                 <h4>病患資訊 (範例 FHIR Resource):</h4>
-                <pre>{{ patient_data | tojson(indent=2) }}</pre>
+                <pre style="max-height: 300px; overflow-y: auto; background-color: #f8f9fa; padding: 10px; border-radius: 5px;">{{ patient_data | tojson(indent=2) }}</pre>
             {% elif patient_data %}
                  <h4>病患資訊 (範例):</h4>
-                 <pre>{{ patient_data | tojson(indent=2) }}</pre>
+                 <pre style="max-height: 300px; overflow-y: auto; background-color: #f8f9fa; padding: 10px; border-radius: 5px;">{{ patient_data | tojson(indent=2) }}</pre>
             {% endif %}
             <a href="{{ url_for('calculate_risk_ui_page') }}" class="btn btn-info mt-2">計算此病患的出血風險</a>
             {% if session.get('fhir_server_url') %}
-                <a href="https://launch.smarthealthit.org/launcher?iss={{ session.get('fhir_server_url') }}" class="btn btn-secondary mt-2 ml-2">返回EHR選擇其他病患</a>
+                {% set fhir_iss = session.get('fhir_server_url') %}
+                
+                {# Check if the current ISS is the SMART Health IT R4 Sandbox #}
+                {% if fhir_iss == 'https://launch.smarthealthit.org/v/r4/fhir' or fhir_iss == 'https://launch.smarthealthit.org/v/r4/fhir/' %}
+                    {# For SMART R4 Sandbox, always use the generic launch token to re-initiate patient selection #}
+                    <a href="https://launch.smarthealthit.org/launcher?iss={{ fhir_iss }}&launch=eyJhIjoiMSJ9" class="btn btn-secondary mt-2 ml-2" title="返回 SMART Sandbox 選擇其他病患">返回EHR選擇其他病患</a>
+                {% else %}
+                    {# For other EHRs, we may not have a reliable generic way to return to patient selection via launch.smarthealthit.org/launcher.
+                       The original session['launch_token'] is for the app's current context, not for re-triggering the EHR's UI.
+                       Providing a link to the ISS (FHIR server base) might be an option, or disabling.
+                       For now, let's make it a disabled button for non-sandbox EHRs as we can't guarantee functionality.
+                    #}
+                    <a class="btn btn-secondary mt-2 ml-2 disabled" href="#" role="button" aria-disabled="true" title="無法為此EHR自動返回病患選擇畫面">返回EHR選擇其他病患</a>
+                {% endif %}
             {% endif %}
         {% else %}
             <div class="alert alert-info">目前沒有選定的病患情境。</div>

@@ -756,7 +756,7 @@ def main_app_page():
     display_patient_data = patient_resource if patient_resource else {"id": patient_id, "name": patient_name}
 
     return render_template('main_app.html', 
-                           title="應用程式主頁", 
+                           title="FHIR ARC-HBR Bleeding risk calculator", 
                            current_user=current_user, 
                            patient_data=display_patient_data, # Pass the full resource or simplified dict
                            patient_name_display=patient_name) # Pass the extracted patient name separately for easy use
@@ -2153,10 +2153,16 @@ def calculate_risk_ui_page():
         'score_details': bleeding_risk_result.get('details', {})
     }
 
+    # Get the actual label used for high risk from config to pass to template
+    # Default to 'high' if not specified, though your config has '高出血風險'
+    actual_high_risk_label = FINAL_RISK_THRESHOLD_CONFIG.get('high_risk_label', 'high')
+    app.logger.info(f"Passing high_risk_label_for_template: {actual_high_risk_label} to calculate_risk_ui.html")
+
     return render_template('calculate_risk_ui.html', 
                            title="出血風險計算結果", 
                            patient_id=patient_id,
-                           calculation_details=calculation_details)
+                           calculation_details=calculation_details,
+                           high_risk_label_for_template=actual_high_risk_label) # Pass the label
 # --- END UI Route ---
 
 # --- Main Execution ---
@@ -2336,18 +2342,18 @@ if __name__ == "__main__":
     <h2>{{ title }} - 病患 ID: {{ patient_id }}</h2>
 
     {% if calculation_details and calculation_details.category %}
-        <div class=\"alert alert-{% if calculation_details.category == 'high' %}danger{% elif calculation_details.category == 'medium' %}warning{% else %}info{% endif %}\" role=\"alert\">
-            <h4>出血風險等級: <span style=\"text-transform: capitalize;\">{{ calculation_details.category }}</span> (總分: {{ calculation_details.score }})</h4>
+        <div class="alert alert-{% if calculation_details.category == high_risk_label_for_template %}danger{% elif calculation_details.category == 'medium' %}warning{% else %}info{% endif %}" role="alert">
+            <h4>出血風險等級: <span style="text-transform: capitalize;">{{ calculation_details.category }}</span> (總分: {{ calculation_details.score }})</h4>
         </div>
 
         <h3>計算細節:</h3>
-        <table class=\"table table-bordered table-sm\">
+        <table class="table table-bordered table-sm">
             <tbody>
                 <tr><th>年齡:</th><td>{{ calculation_details.age if calculation_details.age is not none else '未知' }}</td></tr>
                 <tr><th>性別:</th><td>{{ calculation_details.sex if calculation_details.sex else '未知' }}</td></tr>
-                <tr><th>Hb (g/dL):</th><td>{{ \"%.1f\" | format(calculation_details.hb_value) if calculation_details.hb_value is not none else '未測量或未知' }}</td></tr>
-                <tr><th>血小板 (k/uL):</th><td>{{ \"%.0f\" | format(calculation_details.platelet_value) if calculation_details.platelet_value is not none else '未測量或未知' }}</td></tr>
-                <tr><th>eGFR (mL/min):</th><td>{{ \"%.0f\" | format(calculation_details.egfr_value) if calculation_details.egfr_value is not none else '未測量或未知' }}</td></tr>
+                <tr><th>Hb (g/dL):</th><td>{{ "%.1f" | format(calculation_details.hb_value) if calculation_details.hb_value is not none else '未測量或未知' }}</td></tr>
+                <tr><th>血小板 (k/uL):</th><td>{{ "%.0f" | format(calculation_details.platelet_value) if calculation_details.platelet_value is not none else '未測量或未知' }}</td></tr>
+                <tr><th>eGFR (mL/min):</th><td>{{ "%.0f" | format(calculation_details.egfr_value) if calculation_details.egfr_value is not none else '未測量或未知' }}</td></tr>
                 <tr><th>特定診斷/文字點數:</th><td>{{ calculation_details.condition_points }}</td></tr>
                 <tr><th>特定用藥點數:</th><td>{{ calculation_details.medication_points }}</td></tr>
                 <tr><th>輸血點數:</th><td>{{ calculation_details.blood_transfusion_points }}</td></tr>
@@ -2364,17 +2370,29 @@ if __name__ == "__main__":
         {% endif %}
 
         <h4>原始評分項目 (來自設定檔):</h4>
-        <pre style=\"max-height: 200px; overflow-y: auto; background-color: #f8f9fa; padding: 10px; border-radius: 5px;\">{{ calculation_details.score_details | tojson(indent=2) }}</pre>
+        <pre style="max-height: 200px; overflow-y: auto; background-color: #f8f9fa; padding: 10px; border-radius: 5px;">{{ calculation_details.score_details | tojson(indent=2) }}</pre>
+
+        {# NEW: Conditional link for high risk guideline image #}
+        {% if calculation_details.category == high_risk_label_for_template %}
+            <div class="mt-3">
+                <a href="{{ url_for('static', filename='images/HBR_guideline.jpg') }}" target="_blank" class="btn btn-danger">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-exclamation-triangle-fill" viewBox="0 0 16 16" style="margin-right: 5px;">
+                        <path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/>
+                    </svg>
+                    查閱高出血風險(HBR)處置建議指引圖示
+                </a>
+            </div>
+        {% endif %}
 
     {% else %}
-        <div class=\"alert alert-warning\" role=\"alert\">
+        <div class="alert alert-warning" role="alert">
             無法計算或顯示出血風險。請檢查資料是否完整或稍後再試。
         </div>
     {% endif %}
 
-    <a href=\"{{ url_for('main_app_page') }}\" class=\"btn btn-secondary mt-3\">返回主應用頁面</a>
+    <a href="{{ url_for('main_app_page') }}" class="btn btn-secondary mt-3">返回主應用頁面</a>
     {% if session.get('fhir_server_url') %}
-        <a href=\"https://launch.smarthealthit.org/launcher?iss={{ session.get('fhir_server_url') }}\" class=\"btn btn-outline-secondary mt-3 ml-2\">返回EHR選擇其他病患</a>
+        <a href="https://launch.smarthealthit.org/launcher?iss={{ session.get('fhir_server_url') }}" class="btn btn-outline-secondary mt-3 ml-2">返回EHR選擇其他病患</a>
     {% endif %}
 {% endblock %}
 """)
