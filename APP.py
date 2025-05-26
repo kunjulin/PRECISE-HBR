@@ -1027,28 +1027,28 @@ def get_egfr_value(patient_id, age, sex):
 def get_condition_points(patient_id, codes_score_2, prefix_rules, text_keywords_score_2, value_set_rules, local_valueset_rules, local_valuesets_definitions): # ADDED local_valueset_rules and definitions
     """Fetches conditions and calculates points based on codes, prefixes, text keywords, ValueSets (URL-based), and Local ValueSets.
        MODIFIED: No longer filters by date globally, but prefix rules can have own date conditions.
+       NOW RETURNS: (score, matched_details_list)
     """
     fhir_server = _get_fhir_server_url(); headers = _get_fhir_request_headers()
-    if not fhir_server or not headers: return 0
+    if not fhir_server or not headers: return 0, [] # MODIFIED: Return empty list for details
     max_score = 0
-    today = datetime.date.today() # REINSTATED: Needed for prefix rule date conditions
+    matched_conditions_details = [] # NEW: List to store details of matched conditions
+    today = datetime.date.today()
 
     url = f"{fhir_server}/Condition"
-    # Add clinical-status filter if appropriate (e.g., only active/remission?)
-    # REMOVED: Date filter from params
     params = {"patient": patient_id, "_count": 200}
-    # if perform_date_check: params["recorded-date"] = f"ge{twelve_months_ago.strftime('%Y-%m-%d')}"
     processed_conditions = set()
-    pages_fetched = 0 # Limit pages to prevent infinite loops
+    pages_fetched = 0 
     MAX_PAGES = 10
 
     try:
         while url and pages_fetched < MAX_PAGES:
-            if max_score == 2: break
+            if max_score == 2 and any(d['score_contribution'] == 2 for d in matched_conditions_details): # Optimization: if max score is 2 from a single condition type
+                 break
             pages_fetched += 1
             app.logger.debug(f"Fetching conditions page {pages_fetched} from: {url} with params: {params}")
             response = requests.get(url, headers=headers, params=params, timeout=20)
-            params = None # Params only needed for first request
+            params = None 
             response.raise_for_status(); data = response.json()
 
             if "entry" in data:
@@ -1058,217 +1058,230 @@ def get_condition_points(patient_id, codes_score_2, prefix_rules, text_keywords_
                         if cond_id and cond_id in processed_conditions: continue
 
                         code_data = cond.get("code");
+                        # MODIFIED: Improved logic for condition_display_text
+                        condition_display_text = "N/A" # Default
+                        if code_data:
+                            text_from_code = code_data.get("text")
+                            if text_from_code: # Prioritize code.text if it's non-empty
+                                condition_display_text = text_from_code
+                            else: # code.text is missing or empty, try coding.display
+                                codings = code_data.get("coding")
+                                if codings and len(codings) > 0:
+                                    display_from_coding = codings[0].get("display")
+                                    if display_from_coding: # Use coding.display if it's non-empty
+                                        condition_display_text = display_from_coding
+                        # END MODIFIED condition_display_text logic
+
                         status_coding = cond.get("clinicalStatus", {}).get("coding", [{}])[0]
-                        status = status_coding.get("code", "").lower() # e.g., active, inactive, remission, resolved
+                        status = status_coding.get("code", "").lower()
 
                         recorded_date_str = cond.get("recordedDate"); parsed_date = None
-                        # REMOVED: Date parsing and checking logic for general 12-month rule for this function.
-                        # Prefix rules might still have their own date conditions, which will be evaluated against parsed_date if available.
-                        if recorded_date_str: # Still parse the date if present, for prefix rules that might use it
+                        if recorded_date_str:
                             try: 
                                 date_str_part = recorded_date_str.split('T')[0]
                                 if len(date_str_part) >= 10: parsed_date = datetime.datetime.strptime(date_str_part[:10], "%Y-%m-%d").date()
-                            except ValueError: pass # Silently pass if date parsing fails, rule conditions needing dates won't match
+                            except ValueError: pass
                         
-                        current_condition_max_score = 0
+                        initial_max_score_for_condition = 0 # To track if this specific condition contributes anything new
+
                         # --- 1. Check Codes and Prefixes ---
                         if code_data and "coding" in code_data:
                             for coding in code_data.get("coding", []):
                                 code = coding.get("code")
-                                system = coding.get("system") # Get system from coding
+                                system = coding.get("system")
                                 if code:
                                     code_upper = code.upper()
                                     # Check direct code match for score 2
-                                    if (system, code) in codes_score_2: # Check (system, code) tuple
-                                        current_condition_max_score = max(current_condition_max_score, 2); 
+                                    if (system, code) in codes_score_2:
+                                        if initial_max_score_for_condition < 2: # Only add if it increases score
+                                            matched_conditions_details.append({
+                                                "text": condition_display_text,
+                                                "detail": f"Direct code match: ({system}, {code})",
+                                                "score_contribution": 2,
+                                                "date": parsed_date.strftime("%Y-%m-%d") if parsed_date else "N/A"
+                                            })
+                                            initial_max_score_for_condition = 2
+                                        max_score = max(max_score, 2)
                                         app.logger.debug(f"Condition ID {cond_id}: Code ({system}, {code}) matched direct rule for score 2.")
-                                        break # Max score found for this condition from direct codes
+                                        break 
 
-                                    # Check prefix rules (MODIFIED to handle [system, prefix_str])
+                                    # Check prefix rules
                                     for rule in prefix_rules:
                                         prefix_definition = rule.get("prefix")
                                         if not isinstance(prefix_definition, list) or len(prefix_definition) != 2:
-                                            app.logger.warning(f"Skipping malformed prefix rule in get_condition_points (expected [system, prefix_str]): {rule}")
                                             continue
                                         rule_system, rule_prefix_str = prefix_definition[0], prefix_definition[1].upper()
-
                                         score_value = rule.get("score", 0)
                                         rule_conditions = rule.get("conditions")
 
-                                        # Check if the current coding's system matches the rule's system
-                                        # and if the code starts with the rule's prefix string.
                                         if system == rule_system and code_upper.startswith(rule_prefix_str):
                                             rule_match = False
                                             if rule_conditions:
                                                 req_status = rule_conditions.get("status"); date_condition_met = True
-                                                if req_status and status != req_status: continue # Status doesn't match rule
-                                                # Check date condition
+                                                if req_status and status != req_status: continue 
                                                 max_m = rule_conditions.get("max_months_ago"); min_m = rule_conditions.get("min_months_ago")
-                                                if parsed_date: # If we have a valid date for the condition
+                                                if parsed_date:
                                                     if max_m is not None and parsed_date < (today - datetime.timedelta(days=max_m * 30 + 15)): date_condition_met = False
                                                     if min_m is not None and parsed_date >= (today - datetime.timedelta(days=min_m * 30 + 15)): date_condition_met = False
-                                                elif max_m is not None or min_m is not None: date_condition_met = False # Rule needs date, but condition doesn't have one
+                                                elif max_m is not None or min_m is not None: date_condition_met = False 
 
                                                 if date_condition_met: rule_match = True
-                                            else: # No specific conditions in rule, prefix match is enough
+                                            else: 
                                                 rule_match = True
 
-                                            if rule_match:
-                                                current_condition_max_score = max(current_condition_max_score, score_value)
-                                                app.logger.debug(f"Condition ID {cond_id}: Code {code} (System: {system}) matched prefix rule '{rule_prefix_str}' (System: {rule_system}) for score {score_value}.")
-                                                if current_condition_max_score == 2: break # Exit prefix rule loop if max score reached
-                                    if current_condition_max_score == 2: break # Exit coding loop if max score reached
+                                            if rule_match and score_value > 0:
+                                                if initial_max_score_for_condition < score_value:
+                                                    matched_conditions_details.append({
+                                                        "text": condition_display_text,
+                                                        "detail": f"Prefix rule match: {rule_prefix_str} (System: {rule_system}) on code ({system}, {code})",
+                                                        "score_contribution": score_value,
+                                                        "date": parsed_date.strftime("%Y-%m-%d") if parsed_date else "N/A"
+                                                    })
+                                                    initial_max_score_for_condition = max(initial_max_score_for_condition, score_value)
+                                                max_score = max(max_score, score_value)
+                                                app.logger.debug(f"Condition ID {cond_id}: Code {code} (System: {system}) matched prefix rule '{rule_prefix_str}' for score {score_value}.")
+                                                if initial_max_score_for_condition == 2: break 
+                                    if initial_max_score_for_condition == 2: break 
                         # --- End Code/Prefix Check ---
 
-                        # --- 2. NEW: Check Text if score < 2 ---
-                        if current_condition_max_score < 2 and code_data:
+                        # --- 2. Check Text if overall max_score < 2 (or current condition's score < 2) ---
+                        if max_score < 2 and initial_max_score_for_condition < 2 and code_data:
                             texts_to_join = []
-                            # Get text from code.text
                             current_code_text = code_data.get("text")
-                            if current_code_text: # Check if text is not None and not empty
-                                texts_to_join.append(current_code_text.lower())
-                            # Get text from coding.display
-                            for coding in code_data.get("coding", []):
-                                display_text = coding.get("display")
-                                if display_text: # Check if display is not None and not empty
-                                    texts_to_join.append(display_text.lower())
-                            
-                            # Join all collected texts with a space, then strip any leading/trailing spaces from the final string.
-                            condition_text = " ".join(texts_to_join).strip()
+                            if current_code_text: texts_to_join.append(current_code_text.lower())
+                            for coding_entry in code_data.get("coding", []): # Corrected variable name
+                                display_text = coding_entry.get("display")
+                                if display_text: texts_to_join.append(display_text.lower())
+                            condition_text_content = " ".join(texts_to_join).strip()
 
-                            if condition_text: # Only check if we have some text
-                                # *** Uses the text_keywords_score_2 parameter passed to the function ***
-                                for keyword in text_keywords_score_2: # text_keywords_score_2 is a SET
-                                    # Ensure keyword search is also case-insensitive if text is lowercased
-                                    # and keywords in config might not be consistently cased.
-                                    if keyword.lower() in condition_text: 
-                                        app.logger.info(f"Condition ID {cond_id}: Text '{condition_text[:100]}' matched keyword '{keyword}'. Assigning score 2.")
-                                        current_condition_max_score = 2
-                                        break # Found a keyword, max score reached for this condition
+                            if condition_text_content:
+                                for keyword in text_keywords_score_2:
+                                    if keyword.lower() in condition_text_content:
+                                        app.logger.info(f"Condition ID {cond_id}: Text '{condition_text_content[:100]}' matched keyword '{keyword}'. Assigning score 2.")
+                                        if initial_max_score_for_condition < 2:
+                                            matched_conditions_details.append({
+                                                "text": condition_display_text,
+                                                "detail": f"Keyword match: '{keyword}' in text '{condition_text_content[:50]}...'",
+                                                "score_contribution": 2,
+                                                "date": parsed_date.strftime("%Y-%m-%d") if parsed_date else "N/A"
+                                            })
+                                            initial_max_score_for_condition = 2
+                                        max_score = 2
+                                        break 
                         # --- End Text Check ---
 
-                        # --- 3. NEW: Check ValueSet Rules if score < 2 ---
-                        if current_condition_max_score < 2:
+                        # --- 3. Check ValueSet Rules if overall max_score < 2 (or current condition's score < 2) ---
+                        if max_score < 2 and initial_max_score_for_condition < 2:
                             for vs_rule in value_set_rules:
-                                vs_url = vs_rule.get("url")
-                                vs_score = vs_rule.get("score", 0)
-                                vs_system_filter = vs_rule.get("system_filter") # Optional
+                                vs_url = vs_rule.get("url"); vs_score = vs_rule.get("score", 0); vs_system_filter = vs_rule.get("system_filter")
+                                if not vs_url or vs_score == 0: continue
 
-                                if not vs_url or vs_score == 0:
-                                    continue
-
-                                expanded_codes = _expand_valueset_cached(vs_url) # Uses session-based auth
+                                expanded_codes = _expand_valueset_cached(vs_url)
                                 if expanded_codes:
-                                    app.logger.debug(f"Condition ID {cond_id}: Checking against ValueSet {vs_url} ({len(expanded_codes)} codes) for score {vs_score}.")
-                                    # Check current condition's codings against the expanded ValueSet codes
                                     if code_data and "coding" in code_data:
                                         for cond_coding_entry in code_data.get("coding", []):
-                                            cond_system = cond_coding_entry.get("system")
-                                            cond_code_val = cond_coding_entry.get("code")
+                                            cond_system = cond_coding_entry.get("system"); cond_code_val = cond_coding_entry.get("code")
                                             if cond_system and cond_code_val:
-                                                # Apply system filter if specified in the rule
-                                                if vs_system_filter and cond_system != vs_system_filter:
-                                                    continue 
-                                                
+                                                if vs_system_filter and cond_system != vs_system_filter: continue 
                                                 if (cond_system, cond_code_val) in expanded_codes:
-                                                    app.logger.info(f"Condition ID {cond_id}: Code ({cond_system}, {cond_code_val}) matched ValueSet {vs_url}. Assigning score {vs_score}.")
-                                                    current_condition_max_score = max(current_condition_max_score, vs_score)
-                                                    if current_condition_max_score == 2: break # Max score for this condition via VS
-                                    if current_condition_max_score == 2: break # Max score for this condition from any VS rule
-                                else:
-                                    app.logger.warning(f"Condition ID {cond_id}: Could not expand or get cached codes for ValueSet {vs_url}. Rule skipped for this condition.")
+                                                    if initial_max_score_for_condition < vs_score:
+                                                        matched_conditions_details.append({
+                                                            "text": condition_display_text,
+                                                            "detail": f"ValueSet match: ({cond_system}, {cond_code_val}) in {vs_url}",
+                                                            "score_contribution": vs_score,
+                                                            "date": parsed_date.strftime("%Y-%m-%d") if parsed_date else "N/A"
+                                                        })
+                                                        initial_max_score_for_condition = max(initial_max_score_for_condition, vs_score)
+                                                    max_score = max(max_score, vs_score)
+                                                    if initial_max_score_for_condition == 2: break 
+                                        if initial_max_score_for_condition == 2: break 
                         # --- End ValueSet Check ---
 
-                        # --- 4. NEW: Check Local ValueSet Rules if score < 2 ---
-                        if current_condition_max_score < 2:
+                        # --- 4. Check Local ValueSet Rules if overall max_score < 2 (or current condition's score < 2) ---
+                        if max_score < 2 and initial_max_score_for_condition < 2:
                             for local_vs_rule in local_valueset_rules:
-                                local_vs_key = local_vs_rule.get("valueset_key")
-                                local_vs_score = local_vs_rule.get("score", 0)
-                                rule_conditions = local_vs_rule.get("conditions") # Get optional conditions
-
-                                if not local_vs_key or local_vs_score == 0:
-                                    continue
-
+                                local_vs_key = local_vs_rule.get("valueset_key"); local_vs_score = local_vs_rule.get("score", 0)
+                                rule_conditions = local_vs_rule.get("conditions")
+                                if not local_vs_key or local_vs_score == 0: continue
                                 local_codes_set = local_valuesets_definitions.get(local_vs_key)
 
                                 if local_codes_set:
                                     rule_match_for_local_vs = False
-                                    # Check rule-specific conditions (status, date) if they exist
                                     if rule_conditions:
-                                        req_status = rule_conditions.get("status")
-                                        date_condition_met = True
-                                        if req_status and status != req_status: # status from the current condition resource
-                                            continue # Status doesn't match rule
-
-                                        max_m = rule_conditions.get("max_months_ago")
-                                        min_m = rule_conditions.get("min_months_ago")
-                                        # parsed_date is from the current condition resource
-                                        if parsed_date: 
-                                            if max_m is not None and parsed_date < (today - datetime.timedelta(days=max_m * 30 + 15)):
-                                                date_condition_met = False
-                                            if min_m is not None and parsed_date >= (today - datetime.timedelta(days=min_m * 30 + 15)):
-                                                date_condition_met = False
-                                        elif max_m is not None or min_m is not None: # Rule needs date, but condition has no valid date
-                                            date_condition_met = False
-                                        
-                                        if date_condition_met: 
-                                            rule_match_for_local_vs = True
-                                    else: # No specific conditions in this local_vs_rule, direct match is enough
-                                        rule_match_for_local_vs = True
+                                        req_status = rule_conditions.get("status"); date_condition_met = True
+                                        if req_status and status != req_status: continue
+                                        max_m = rule_conditions.get("max_months_ago"); min_m = rule_conditions.get("min_months_ago")
+                                        if parsed_date:
+                                            if max_m is not None and parsed_date < (today - datetime.timedelta(days=max_m * 30 + 15)): date_condition_met = False
+                                            if min_m is not None and parsed_date >= (today - datetime.timedelta(days=min_m * 30 + 15)): date_condition_met = False
+                                        elif max_m is not None or min_m is not None: date_condition_met = False
+                                        if date_condition_met: rule_match_for_local_vs = True
+                                    else: rule_match_for_local_vs = True
                                     
-                                    if rule_match_for_local_vs: # If rule conditions are met (or no conditions)
-                                        app.logger.debug(f"Condition ID {cond_id}: Checking against Local ValueSet '{local_vs_key}' ({len(local_codes_set)} codes) for score {local_vs_score}.")
+                                    if rule_match_for_local_vs:
                                         if code_data and "coding" in code_data:
                                             for cond_coding_entry in code_data.get("coding", []):
-                                                cond_system = cond_coding_entry.get("system")
-                                                cond_code_val = cond_coding_entry.get("code")
+                                                cond_system = cond_coding_entry.get("system"); cond_code_val = cond_coding_entry.get("code")
                                                 if cond_system and cond_code_val:
                                                     if (cond_system, cond_code_val) in local_codes_set:
-                                                        app.logger.info(f"Condition ID {cond_id}: Code ({cond_system}, {cond_code_val}) matched Local ValueSet '{local_vs_key}' (and rule conditions). Assigning score {local_vs_score}.")
-                                                        current_condition_max_score = max(current_condition_max_score, local_vs_score)
-                                                        if current_condition_max_score == 2: break
-                                        if current_condition_max_score == 2: break 
-                                else:
-                                    app.logger.warning(f"Condition ID {cond_id}: Local ValueSet key '{local_vs_key}' not found or empty in definitions. Rule skipped.")
+                                                        if initial_max_score_for_condition < local_vs_score:
+                                                            matched_conditions_details.append({
+                                                                "text": condition_display_text,
+                                                                "detail": f"Local ValueSet '{local_vs_key}' match: ({cond_system}, {cond_code_val})",
+                                                                "score_contribution": local_vs_score,
+                                                                "date": parsed_date.strftime("%Y-%m-%d") if parsed_date else "N/A"
+                                                            })
+                                                            initial_max_score_for_condition = max(initial_max_score_for_condition, local_vs_score)
+                                                        max_score = max(max_score, local_vs_score)
+                                                        if initial_max_score_for_condition == 2: break 
+                                        if initial_max_score_for_condition == 2: break 
                         # --- End Local ValueSet Check ---
-
-                        # Update overall max score based on this condition's max score
-                        max_score = max(max_score, current_condition_max_score)
+                        
                         if cond_id: processed_conditions.add(cond_id)
-                        if max_score == 2: break # Exit entry loop if overall max reached
+                        # Optimization: if max score is 2 from any single condition's evaluation, and we have details for it.
+                        if max_score == 2 and any(d['score_contribution'] == 2 for d in matched_conditions_details): break 
             # --- End entry loop ---
 
-            # Find next link for pagination
             next_link = None
-            if max_score < 2: # Only fetch next page if max score not reached
+            if not (max_score == 2 and any(d['score_contribution'] == 2 for d in matched_conditions_details)):
                 next_link = next((link['url'] for link in data.get('link', []) if link.get('relation') == 'next'), None)
-            url = next_link # Set url for the next iteration, will be None if no next link
+            url = next_link
 
-            if not url: app.logger.debug("No more condition pages or max score reached.")
+            if not url: app.logger.debug("No more condition pages or max score reached with details.")
 
         if pages_fetched >= MAX_PAGES: app.logger.warning(f"Stopped fetching conditions after {MAX_PAGES} pages for patient {patient_id}.")
 
     except requests.exceptions.RequestException as e: app.logger.error(f"Error fetching conditions for {patient_id}: {e}")
     except Exception as e: app.logger.error(f"Error processing conditions for {patient_id}: {e}", exc_info=True)
 
-    app.logger.info(f"Final condition score for patient {patient_id}: {max_score}")
-    return max_score
+    # MODIFIED: More inclusive filtering for final_matched_details (reverted from temporary debug)
+    final_matched_details = []
+    if max_score > 0:
+        # Include all details that had a positive score contribution
+        final_matched_details = [d for d in matched_conditions_details if d.get('score_contribution', 0) > 0]
+    # END MODIFIED filtering
+
+    app.logger.info(f"Final condition score for patient {patient_id}: {max_score}. Matched conditions reported: {len(final_matched_details)}")
+    return max_score, final_matched_details
 # --- End MODIFIED get_condition_points ---
 
-# ... (get_medication_points remains the same) ...
 def get_medication_points(patient_id, oac_codings, nsaid_steroid_codings):
+    """Fetches active medications and calculates points based on OAC (2 points) or NSAID/Steroid (1 point).
+       NOW RETURNS: (score, matched_medication_details_list)
+    """
     fhir_server = _get_fhir_server_url(); headers = _get_fhir_request_headers()
-    if not fhir_server or not headers: return 0
-    url = f"{fhir_server}/MedicationRequest"
-    # Consider adding date filters if only recent meds matter, e.g., authoredon
-    params = {"patient": patient_id, "status": "active", "_count": 200}
+    if not fhir_server or not headers: return 0, [] # MODIFIED: Return empty list for details
     max_score = 0
+    matched_medications_details = [] # NEW: List to store details
+    url = f"{fhir_server}/MedicationRequest"
+    params = {"patient": patient_id, "status": "active", "_count": 200}
     pages_fetched = 0
     MAX_PAGES = 10
 
     try:
         while url and pages_fetched < MAX_PAGES:
-            if max_score == 2: break
+            if max_score == 2 and any(d['type'] == 'OAC' for d in matched_medications_details): # Optimization
+                break
             pages_fetched += 1
             app.logger.debug(f"Fetching medications page {pages_fetched} from: {url} with params: {params}")
             response = requests.get(url, headers=headers, params=params, timeout=15)
@@ -1278,50 +1291,84 @@ def get_medication_points(patient_id, oac_codings, nsaid_steroid_codings):
                 for entry in data["entry"]:
                     if "resource" in entry and entry["resource"]["resourceType"] == "MedicationRequest":
                         med_req = entry["resource"]; status = med_req.get("status", "").lower()
-                        # Double check status if needed, though query parameter should handle it
                         if status != 'active': continue
 
-                        med_concept = med_req.get("medicationCodeableConcept"); found_oac_in_med = False
+                        med_concept = med_req.get("medicationCodeableConcept")
+                        med_display_text = med_concept.get("text", "N/A") if med_concept else "N/A"
+                        if med_concept and not med_display_text and med_concept.get("coding"):
+                            med_display_text = med_concept.get("coding")[0].get("display", "N/A")
+                        
+                        found_oac_in_current_med = False
+                        current_med_score_contribution = 0
+                        med_type_for_detail = "Unknown"
+
                         if med_concept and "coding" in med_concept:
                             for coding_entry in med_concept.get("coding", []):
                                 system = coding_entry.get("system"); code = coding_entry.get("code")
-                                if system and code: # Ensure both exist
+                                if system and code:
                                     current_tuple = (system, code)
                                     if current_tuple in oac_codings:
-                                        app.logger.info(f"OAC found: {current_tuple} for patient {patient_id}")
-                                        max_score = 2; found_oac_in_med = True; break # Break inner coding loop
+                                        app.logger.info(f"OAC found: {current_tuple} ({med_display_text}) for patient {patient_id}")
+                                        if max_score < 2: # Add detail only if it increases score or is new OAC
+                                            matched_medications_details.append({
+                                                "text": med_display_text,
+                                                "detail": f"OAC: ({system}, {code})",
+                                                "score_contribution": 2,
+                                                "type": "OAC"
+                                            })
+                                        max_score = 2
+                                        found_oac_in_current_med = True
+                                        current_med_score_contribution = 2
+                                        med_type_for_detail = "OAC"
+                                        break # Found OAC, highest score for this med
 
-                        if found_oac_in_med: break # Break outer entry loop
-
-                        # Only check NSAID/Steroid if OAC not found and max_score still < 2
-                        if not found_oac_in_med and max_score < 2:
-                            if med_concept and "coding" in med_concept: # Need to check med_concept again
+                        # Only check NSAID/Steroid if OAC not found in *this current med* and overall max_score is still < 2
+                        if not found_oac_in_current_med and max_score < 2:
+                            if med_concept and "coding" in med_concept:
                                 for coding_entry in med_concept.get("coding", []):
                                     system = coding_entry.get("system"); code = coding_entry.get("code")
                                     if system and code:
                                         current_tuple = (system, code)
                                         if current_tuple in nsaid_steroid_codings:
-                                            app.logger.info(f"NSAID/Steroid found: {current_tuple} for patient {patient_id}")
-                                            max_score = max(max_score, 1) # Update score to 1 if it was 0
-
-                    if max_score == 2: break # Break entry loop
+                                            app.logger.info(f"NSAID/Steroid found: {current_tuple} ({med_display_text}) for patient {patient_id}")
+                                            if max_score < 1: # Add detail only if it increases overall score
+                                                matched_medications_details.append({
+                                                    "text": med_display_text,
+                                                    "detail": f"NSAID/Steroid: ({system}, {code})",
+                                                    "score_contribution": 1,
+                                                    "type": "NSAID/Steroid"
+                                                })
+                                            max_score = max(max_score, 1)
+                                            current_med_score_contribution = 1 # This med contributed 1
+                                            med_type_for_detail = "NSAID/Steroid"
+                                            break # Found NSAID/Steroid for this med
+                        
+                        # Optimization: if overall max_score is 2 (from any med) and we have an OAC detail, stop.
+                        if max_score == 2 and any(d['type'] == 'OAC' for d in matched_medications_details):
+                             break # Break entry loop
             # --- End entry loop ---
 
-            # Find next link for pagination
             next_link = None
-            if max_score < 2:
+            if not (max_score == 2 and any(d['type'] == 'OAC' for d in matched_medications_details)):
                 next_link = next((link['url'] for link in data.get('link', []) if link.get('relation') == 'next'), None)
             url = next_link
 
-            if not url: app.logger.debug("No more medication pages or max score reached.")
+            if not url: app.logger.debug("No more medication pages or max score reached with OAC details.")
 
         if pages_fetched >= MAX_PAGES: app.logger.warning(f"Stopped fetching medications after {MAX_PAGES} pages for patient {patient_id}.")
 
     except requests.exceptions.RequestException as e: app.logger.error(f"Error fetching MedicationRequest for {patient_id}: {e}")
     except Exception as e: app.logger.error(f"Error processing MedicationRequest for {patient_id}: {e}", exc_info=True)
 
-    app.logger.info(f"Final medication score for patient {patient_id}: {max_score}")
-    return max_score
+    # MODIFIED: More inclusive filtering for final_matched_med_details
+    final_matched_med_details = []
+    if max_score > 0:
+        # Include all details that had a positive score contribution
+        final_matched_med_details = [d for d in matched_medications_details if d.get('score_contribution', 0) > 0]
+    # END MODIFIED filtering
+
+    app.logger.info(f"Final medication score for patient {patient_id}: {max_score}. Matched medications reported: {len(final_matched_med_details)}")
+    return max_score, final_matched_med_details
 
 # ... (calculate_bleeding_risk remains the same) ...
 def calculate_bleeding_risk(age, egfr_value, hemoglobin, sex, platelet, condition_points, medication_points, blood_transfusion_points, risk_params, final_threshold):
@@ -2180,7 +2227,7 @@ def calculate_risk_ui_page():
     app.logger.info(f"Initiating bleeding risk calculation for UI display for patient: {patient_id}")
 
     # 1. Fetch Patient Demographics (for age/sex)
-    patient_resource = get_patient_data() # Uses patient_id from session
+    patient_resource = get_patient_data() 
     age = None
     sex = "unknown"
     if patient_resource:
@@ -2190,33 +2237,31 @@ def calculate_risk_ui_page():
         app.logger.info(f"Patient {patient_id}: Age={age}, Sex={sex}")
     else:
         flash(f"無法獲取病患 {patient_id} 的基本資訊。計算可能不完整。", "danger")
-        # Allow to proceed but some scores might be affected
 
-    # 2. Fetch Lab Values and eGFR (using functions that rely on session for auth)
+    # 2. Fetch Lab Values and eGFR
     hb_value = get_hemoglobin(patient_id)
     platelet_value = get_platelet(patient_id)
     egfr_value = get_egfr_value(patient_id, age, sex) 
-
     app.logger.info(f"Patient {patient_id} Labs: Hb={hb_value}, Platelet={platelet_value}, eGFR={egfr_value}")
 
-    # 3. Get Condition, Medication, and Blood Transfusion Points
-    condition_points = get_condition_points(
+    # 3. Get Condition, Medication, and Blood Transfusion Points AND DETAILS
+    condition_points, matched_conditions_details = get_condition_points( # MODIFIED to get details
         patient_id,
         CONDITION_CODES_SCORE_2_CONFIG,
         CONDITION_PREFIX_RULES_CONFIG,
         CONDITION_TEXT_KEYWORDS_SCORE_2_CONFIG,
         CONDITION_VALUESET_RULES_CONFIG,
-        CONDITION_LOCAL_VALUESET_RULES_CONFIG, # Pass Local VS rules
-        LOCAL_VALUESETS_CONFIG # Pass Local VS definitions
+        CONDITION_LOCAL_VALUESET_RULES_CONFIG, 
+        LOCAL_VALUESETS_CONFIG
     )
-    medication_points = get_medication_points(
+    medication_points, matched_medications_details = get_medication_points( # MODIFIED to get details
         patient_id,
         OAC_CODINGS_CONFIG,
         NSAID_STEROID_CODINGS_CONFIG
     )
     blood_transfusion_points, matched_transfusions = get_blood_transfusion_points(patient_id)
 
-    app.logger.info(f"Patient {patient_id} Points: Conditions={condition_points}, Meds={medication_points}, Transfusions={blood_transfusion_points}")
+    app.logger.info(f"Patient {patient_id} Points: Conditions={condition_points} (Details: {len(matched_conditions_details)}), Meds={medication_points} (Details: {len(matched_medications_details)}), Transfusions={blood_transfusion_points}")
 
     # 4. Calculate Bleeding Risk
     bleeding_risk_result = calculate_bleeding_risk(
@@ -2225,8 +2270,8 @@ def calculate_risk_ui_page():
         hemoglobin=hb_value,
         sex=sex,
         platelet=platelet_value,
-        condition_points=condition_points,
-        medication_points=medication_points,
+        condition_points=condition_points, # Pass the score
+        medication_points=medication_points, # Pass the score
         blood_transfusion_points=blood_transfusion_points,
         risk_params=RISK_PARAMS_CONFIG,
         final_threshold=FINAL_RISK_THRESHOLD_CONFIG
@@ -2235,7 +2280,7 @@ def calculate_risk_ui_page():
     if not bleeding_risk_result:
         app.logger.error(f"Failed to calculate bleeding risk for patient {patient_id} for UI.")
         flash("計算出血風險時發生錯誤。", "danger")
-        bleeding_risk_result = {} # Ensure it's a dict for the template
+        bleeding_risk_result = {}
 
     # Prepare data for template
     calculation_details = {
@@ -2244,10 +2289,12 @@ def calculate_risk_ui_page():
         'hb_value': hb_value,
         'platelet_value': platelet_value,
         'egfr_value': egfr_value,
-        'condition_points': condition_points,
-        'medication_points': medication_points,
+        'condition_points': condition_points, # Score
+        'medication_points': medication_points, # Score
         'blood_transfusion_points': blood_transfusion_points,
         'matched_transfusions': matched_transfusions,
+        'matched_conditions': matched_conditions_details, # ADDED THIS LINE
+        'matched_medications': matched_medications_details, # ADDED THIS LINE
         'risk_params': RISK_PARAMS_CONFIG, 
         'score': bleeding_risk_result.get('score'),
         'category': bleeding_risk_result.get('category'),

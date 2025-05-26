@@ -30,6 +30,32 @@
             </ul>
         {% endif %}
 
+        {# Display Matched Conditions #}
+        {% if calculation_details.matched_conditions %}
+            <h5>導致評分的診斷/情況:</h5>
+            <ul class="list-group mb-3">
+            {% for cond_detail in calculation_details.matched_conditions %}
+                <li class="list-group-item">
+                    <strong>{{ cond_detail.text }}</strong> ({{ cond_detail.date }})
+                    <br><small>原因: {{ cond_detail.detail }} - 貢獻分數: {{ cond_detail.score_contribution }}</small>
+                </li>
+            {% endfor %}
+            </ul>
+        {% endif %}
+
+        {# Display Matched Medications #}
+        {% if calculation_details.matched_medications %}
+            <h5>導致評分的藥物:</h5>
+            <ul class="list-group mb-3">
+            {% for med_detail in calculation_details.matched_medications %}
+                <li class="list-group-item">
+                    <strong>{{ med_detail.text }}</strong>
+                    <br><small>原因: {{ med_detail.detail }} (類型: {{ med_detail.type }}) - 貢獻分數: {{ med_detail.score_contribution }}</small>
+                </li>
+            {% endfor %}
+            </ul>
+        {% endif %}
+
         <h4>原始評分項目 (來自設定檔):</h4>
         <pre style="max-height: 200px; overflow-y: auto; background-color: #f8f9fa; padding: 10px; border-radius: 5px;">{{ calculation_details.score_details | tojson(indent=2) }}</pre>
 
