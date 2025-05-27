@@ -1798,8 +1798,10 @@ def get_egfr_value_from_prefetch(prefetch_data, age, sex):
 def get_condition_points_from_prefetch(conditions_bundle, codes_score_2, prefix_rules, text_keywords_score_2, value_set_rules, local_valueset_rules, local_valuesets_definitions): # ADDED local_valueset_rules and definitions
     """處理預先取得的 Condition bundle，使用傳入的代碼集、前綴、文字關鍵字和 ValueSet (URL and Local)。
        MODIFIED: 不再於後端進行12個月日期過濾。
+       NOW RETURNS: (score, matched_details_list)
     """
     max_score = 0
+    matched_conditions_details = []
     # REMOVED: Date threshold calculation for 12-month filtering
     # try: 
     #     today = datetime.date.today()
@@ -1849,6 +1851,26 @@ def get_condition_points_from_prefetch(conditions_bundle, codes_score_2, prefix_
                             code_upper = code.upper()
                             # 檢查直接代碼匹配得分 2
                             if (system, code) in codes_score_2: # Check (system, code) tuple
+                                if current_condition_max_score < 2:
+                                    # Get condition display text
+                                    condition_display_text = "N/A"
+                                    if code_data:
+                                        text_from_code = code_data.get("text")
+                                        if text_from_code:
+                                            condition_display_text = text_from_code
+                                        else:
+                                            codings = code_data.get("coding")
+                                            if codings and len(codings) > 0:
+                                                display_from_coding = codings[0].get("display")
+                                                if display_from_coding:
+                                                    condition_display_text = display_from_coding
+                                    
+                                    matched_conditions_details.append({
+                                        "text": condition_display_text,
+                                        "detail": f"Direct code match: ({system}, {code})",
+                                        "score_contribution": 2,
+                                        "date": parsed_date.strftime("%Y-%m-%d") if parsed_date else "N/A"
+                                    })
                                 current_condition_max_score = max(current_condition_max_score, 2); 
                                 app.logger.debug(f"Condition ID {cond_id}: Code ({system}, {code}) matched direct rule for score 2.")
                                 break # Max score found for this condition from direct codes
@@ -1908,6 +1930,26 @@ def get_condition_points_from_prefetch(conditions_bundle, codes_score_2, prefix_
                         # *** Uses the text_keywords_score_2 parameter passed to the function ***
                         for keyword in text_keywords_score_2: # text_keywords_score_2 is a SET
                             if keyword.lower() in condition_text:
+                                if current_condition_max_score < 2:
+                                    # Get condition display text
+                                    condition_display_text = "N/A"
+                                    if code_data:
+                                        text_from_code = code_data.get("text")
+                                        if text_from_code:
+                                            condition_display_text = text_from_code
+                                        else:
+                                            codings = code_data.get("coding")
+                                            if codings and len(codings) > 0:
+                                                display_from_coding = codings[0].get("display")
+                                                if display_from_coding:
+                                                    condition_display_text = display_from_coding
+                                    
+                                    matched_conditions_details.append({
+                                        "text": condition_display_text,
+                                        "detail": f"Keyword match: '{keyword}' in text '{condition_text[:50]}...'",
+                                        "score_contribution": 2,
+                                        "date": parsed_date.strftime("%Y-%m-%d") if parsed_date else "N/A"
+                                    })
                                 app.logger.info(f"Prefetch Condition ID {cond_id}: Text '{condition_text[:100]}...' matched keyword '{keyword}'. Assigning score 2.")
                                 current_condition_max_score = 2
                                 break # Found a keyword, max score reached
@@ -2000,42 +2042,86 @@ def get_condition_points_from_prefetch(conditions_bundle, codes_score_2, prefix_
                 max_score = max(max_score, current_condition_max_score) # 更新全局最高分
                 processed_conditions.add(cond_id) # 標記為已處理
 
-    app.logger.info(f"Final prefetch condition score after backend filtering and text analysis: {max_score}")
-    return max_score
+    # Filter final matched details
+    final_matched_details = []
+    if max_score > 0:
+        final_matched_details = [d for d in matched_conditions_details if d.get('score_contribution', 0) > 0]
+
+    app.logger.info(f"Final prefetch condition score after backend filtering and text analysis: {max_score}. Matched conditions: {len(final_matched_details)}")
+    return max_score, final_matched_details
 # --- End MODIFIED get_condition_points_from_prefetch ---
 
 
 def get_medication_points_from_prefetch(medications_bundle, oac_codings, nsaid_steroid_codings):
-    """處理預先取得的 MedicationRequest bundle，使用傳入的代碼集。"""
-    # ... (Logic remains the same) ...
+    """處理預先取得的 MedicationRequest bundle，使用傳入的代碼集。
+       NOW RETURNS: (score, matched_medication_details_list)
+    """
     max_score = 0
+    matched_medications_details = []
     if medications_bundle and "entry" in medications_bundle:
         for entry in medications_bundle["entry"]:
             if "resource" in entry and entry["resource"]["resourceType"] == "MedicationRequest":
-                med_req = entry["resource"]; status = med_req.get("status", "").lower()
+                med_req = entry["resource"]
+                status = med_req.get("status", "").lower()
                 # Consider only active status from prefetch
-                if status != 'active': continue
+                if status != 'active': 
+                    continue
 
-                med_concept = med_req.get("medicationCodeableConcept"); found_oac_in_med = False
+                med_concept = med_req.get("medicationCodeableConcept")
+                med_display_text = med_concept.get("text", "N/A") if med_concept else "N/A"
+                if med_concept and not med_display_text and med_concept.get("coding"):
+                    med_display_text = med_concept.get("coding")[0].get("display", "N/A")
+                
+                found_oac_in_med = False
+                
                 if med_concept and "coding" in med_concept:
                     for coding_entry in med_concept.get("coding", []):
-                        system = coding_entry.get("system"); code = coding_entry.get("code")
+                        system = coding_entry.get("system")
+                        code = coding_entry.get("code")
                         if system and code: # Check both exist
                             current_tuple = (system, code)
-                            if current_tuple in oac_codings: max_score = 2; found_oac_in_med = True; break
-                    if found_oac_in_med: break # Exit outer loop if OAC found
+                            if current_tuple in oac_codings: 
+                                if max_score < 2:
+                                    matched_medications_details.append({
+                                        "text": med_display_text,
+                                        "detail": f"OAC: ({system}, {code})",
+                                        "score_contribution": 2,
+                                        "type": "OAC"
+                                    })
+                                max_score = 2
+                                found_oac_in_med = True
+                                break
+                    
+                    if found_oac_in_med: 
+                        break # Exit outer loop if OAC found
 
                     # Check NSAID only if OAC not found and score < 2
                     if not found_oac_in_med and max_score < 2:
                         for coding_entry in med_concept.get("coding", []):
-                            system = coding_entry.get("system"); code = coding_entry.get("code")
+                            system = coding_entry.get("system")
+                            code = coding_entry.get("code")
                             if system and code:
                                 current_tuple = (system, code)
-                                if current_tuple in nsaid_steroid_codings: max_score = max(max_score, 1)
+                                if current_tuple in nsaid_steroid_codings: 
+                                    if max_score < 1:
+                                        matched_medications_details.append({
+                                            "text": med_display_text,
+                                            "detail": f"NSAID/Steroid: ({system}, {code})",
+                                            "score_contribution": 1,
+                                            "type": "NSAID/Steroid"
+                                        })
+                                    max_score = max(max_score, 1)
 
-            if max_score == 2: break # Exit loop once max score reached
-    app.logger.info(f"Final prefetch medication score: {max_score}")
-    return max_score
+            if max_score == 2: 
+                break # Exit loop once max score reached
+    
+    # Filter final matched details
+    final_matched_med_details = []
+    if max_score > 0:
+        final_matched_med_details = [d for d in matched_medications_details if d.get('score_contribution', 0) > 0]
+    
+    app.logger.info(f"Final prefetch medication score: {max_score}. Matched medications: {len(final_matched_med_details)}")
+    return max_score, final_matched_med_details
 
 
 @app.route("/cds-services", methods=["GET"])
@@ -2083,6 +2169,11 @@ def bleeding_risk_calculator():
     sex = patient.get("gender", "unknown")
 
     app.logger.info(f"Processing CDS Hook for patient {patient_id}, age={age}, sex={sex}")
+    
+    # Log prefetch data availability for debugging
+    app.logger.info(f"Prefetch data keys: {list(prefetch_data.keys())}")
+    app.logger.info(f"Conditions bundle entries: {len(prefetch_data.get('conditions', {}).get('entry', []))}")
+    app.logger.info(f"Medications bundle entries: {len(prefetch_data.get('medications', {}).get('entry', []))}")
 
     # --- Get values using prefetch helpers ---
     hb_value = get_hemoglobin_from_prefetch(prefetch_data.get("hemoglobin"))
@@ -2094,8 +2185,8 @@ def bleeding_risk_calculator():
     app.logger.info(f"Using eGFR value from prefetch: {egfr_value_prefetch}")
     # --- END MODIFIED ---
 
-    # --- MODIFIED: Get condition points from prefetch, passing text keywords config ---
-    condition_points = get_condition_points_from_prefetch(
+    # --- MODIFIED: Get condition points and details from prefetch ---
+    condition_points, matched_conditions_details = get_condition_points_from_prefetch(
         prefetch_data.get("conditions"),
         CONDITION_CODES_SCORE_2_CONFIG,
         CONDITION_PREFIX_RULES_CONFIG,
@@ -2105,11 +2196,19 @@ def bleeding_risk_calculator():
         LOCAL_VALUESETS_CONFIG # Pass Local VS definitions
     )
     # --- END MODIFIED ---
-    medication_points = get_medication_points_from_prefetch(
+    medication_points, matched_medications_details = get_medication_points_from_prefetch(
         prefetch_data.get("medications"),
         OAC_CODINGS_CONFIG,
         NSAID_STEROID_CODINGS_CONFIG
     )
+    
+    # Log the collected details for debugging
+    app.logger.info(f"Condition points: {condition_points}, matched conditions: {len(matched_conditions_details)}")
+    app.logger.info(f"Medication points: {medication_points}, matched medications: {len(matched_medications_details)}")
+    if matched_conditions_details:
+        app.logger.info(f"Matched conditions details: {[c.get('text', 'N/A') for c in matched_conditions_details]}")
+    if matched_medications_details:
+        app.logger.info(f"Matched medications details: {[m.get('text', 'N/A') for m in matched_medications_details]}")
 
     # --- Call calculate_bleeding_risk with the determined eGFR value ---
     # score, risk = calculate_bleeding_risk(
@@ -2165,7 +2264,7 @@ def bleeding_risk_calculator():
     # Build detailed breakdown string using details dict for consistency
     card_detail = (
         f"病人的出血風險評估為 **{risk}** (基於 ARC-HBR 標準因子評分)。\n\n"
-                  f"**評分項目:**\n"
+        f"**評分項目:**\n"
         f"- 年齡: {details.get('age', '未知')} 歲 ({details.get('age_score_component', 0)} 分)\n"
         f"- eGFR: {format(details.get('egfr_value'), '.1f') if details.get('egfr_value') is not None else '未知'} mL/min ({details.get('egfr_score_component', 0)} 分)\n"
         f"- Hb: {format(details.get('hemoglobin'), '.1f') if details.get('hemoglobin') is not None else '未知'} g/dL (性別: {details.get('sex', '未知')}) ({details.get('hemoglobin_score_component', 0)} 分)\n"
@@ -2173,8 +2272,23 @@ def bleeding_risk_calculator():
         f"- 特定診斷/文字 (Condition): {details.get('condition_points', 0)} 分\n"
         f"- 特定用藥 (Medication): {details.get('medication_points', 0)} 分\n"
         f"- 輸血 (Procedure): {details.get('blood_transfusion_points', 0)} 分\n\n"
-                   f"**總分: {score}**"
     )
+
+    # Add matched conditions details if any
+    if matched_conditions_details:
+        card_detail += "**符合高風險的診斷:**\n"
+        for cond in matched_conditions_details:
+            card_detail += f"- {cond.get('text', 'N/A')} ({cond.get('score_contribution', 0)} 分) - {cond.get('detail', '')}\n"
+        card_detail += "\n"
+
+    # Add matched medications details if any
+    if matched_medications_details:
+        card_detail += "**符合高風險的用藥:**\n"
+        for med in matched_medications_details:
+            card_detail += f"- {med.get('text', 'N/A')} ({med.get('score_contribution', 0)} 分) - {med.get('detail', '')}\n"
+        card_detail += "\n"
+
+    card_detail += f"**總分: {score}**"
 
     indicator_type = "info" # Default
     if risk == FINAL_RISK_THRESHOLD_CONFIG.get('high_risk_label', 'high'):

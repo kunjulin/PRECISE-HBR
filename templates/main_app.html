@@ -124,12 +124,52 @@
                                             <i class="fas fa-calculator mr-2"></i>
                                             計算出血風險
                                         </a>
-                                        {% if session.get('fhir_server_url') %}
-                                            <a href="https://launch.smarthealthit.org/launcher?iss={{ session.get('fhir_server_url') }}" 
-                                               class="btn btn-outline-secondary">
+                                        
+                                        <!-- Patient Switching Options -->
+                                        {% set fhir_iss = session.get('fhir_server_url') %}
+                                        {% if fhir_iss %}
+                                            {% if fhir_iss == 'https://launch.smarthealthit.org/v/r4/fhir' or fhir_iss == 'https://launch.smarthealthit.org/v/r4/fhir/' %}
+                                                <!-- SMART Health IT R4 Sandbox -->
+                                                <a href="https://launch.smarthealthit.org/launcher?iss={{ fhir_iss }}&launch=eyJhIjoiMSJ9" 
+                                                   class="btn btn-outline-primary" 
+                                                   title="返回 SMART Sandbox 選擇其他病患">
+                                                    <i class="fas fa-exchange-alt mr-2"></i>
+                                                    切換病患 (Sandbox)
+                                                </a>
+                                            {% else %}
+                                                <!-- Other EHR Systems -->
+                                                <div class="btn-group" role="group">
+                                                    <button type="button" class="btn btn-outline-secondary dropdown-toggle" 
+                                                            data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                                        <i class="fas fa-exchange-alt mr-2"></i>
+                                                        切換病患
+                                                    </button>
+                                                    <div class="dropdown-menu">
+                                                        <h6 class="dropdown-header">切換病患選項</h6>
+                                                        <a class="dropdown-item" href="{{ url_for('logout') }}">
+                                                            <i class="fas fa-sign-out-alt mr-2"></i>
+                                                            登出並重新啟動
+                                                        </a>
+                                                        <div class="dropdown-divider"></div>
+                                                        <a class="dropdown-item" href="https://launch.smarthealthit.org/launcher?iss=https://launch.smarthealthit.org/v/r4/fhir&launch=eyJhIjoiMSJ9">
+                                                            <i class="fas fa-flask mr-2"></i>
+                                                            使用 SMART Sandbox 測試
+                                                        </a>
+                                                        <div class="dropdown-divider"></div>
+                                                        <span class="dropdown-item-text">
+                                                            <small class="text-muted">
+                                                                <i class="fas fa-info-circle mr-1"></i>
+                                                                請透過您的 EHR 系統重新啟動應用程式以選擇其他病患
+                                                            </small>
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            {% endif %}
+                                        {% else %}
+                                            <button class="btn btn-outline-secondary" disabled title="無法取得 FHIR 伺服器資訊">
                                                 <i class="fas fa-exchange-alt mr-2"></i>
-                                                切換病患
-                                            </a>
+                                                切換病患 (不可用)
+                                            </button>
                                         {% endif %}
                                     </div>
                                 </div>
@@ -174,9 +214,23 @@
                                 <div class="mr-3">
                                     <i class="fas fa-exclamation-triangle fa-2x text-warning"></i>
                                 </div>
-                                <div>
+                                <div class="flex-grow-1">
                                     <h5 class="text-warning mb-1">目前沒有選定的病患情境</h5>
-                                    <p class="mb-0">請透過您的 EHR 系統選擇病患以開始使用風險計算功能。</p>
+                                    <p class="mb-3">請透過您的 EHR 系統選擇病患以開始使用風險計算功能。</p>
+                                    
+                                    <!-- Quick Launch Options for Testing -->
+                                    <div class="mt-3">
+                                        <h6 class="text-muted mb-2">測試選項：</h6>
+                                        <a href="https://launch.smarthealthit.org/launcher?iss=https://launch.smarthealthit.org/v/r4/fhir&launch=eyJhIjoiMSJ9" 
+                                           class="btn btn-outline-primary btn-sm mr-2">
+                                            <i class="fas fa-flask mr-1"></i>
+                                            使用 SMART R4 Sandbox 測試
+                                        </a>
+                                        <a href="{{ url_for('index') }}" class="btn btn-outline-secondary btn-sm">
+                                            <i class="fas fa-home mr-1"></i>
+                                            返回首頁
+                                        </a>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -296,6 +350,10 @@
     
     .btn-group-vertical .btn:last-child {
         margin-bottom: 0;
+    }
+    
+    .dropdown-item-text {
+        white-space: normal;
     }
 </style>
 
