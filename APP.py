@@ -469,7 +469,7 @@ def index():
     This page might explain how to launch the app from an EHR,
     or provide a test launch button for development.
     """
-    return render_template('index.html', title="智慧醫療風險計算器")
+    return render_template('index.html', title="Smart Medical Risk Calculator")
 
 @app.route('/launch')
 def launch():
@@ -907,7 +907,7 @@ def main_app_page():
     display_patient_data = patient_resource if patient_resource else {"id": patient_id, "name": patient_name}
 
     return render_template('main_app.html', 
-                           title="FHIR ARC-HBR Bleeding risk calculator", 
+                           title="FHIR ARC-HBR Bleeding Risk Calculator", 
                            current_user=current_user, 
                            patient_data=display_patient_data, # Pass the full resource or simplified dict
                            patient_name_display=patient_name) # Pass the extracted patient name separately for easy use
@@ -1745,7 +1745,7 @@ def get_hemoglobin_from_prefetch(obs_bundle):
 # --- >> END NEW HELPER << ---
 
 def get_creatinine_from_prefetch(obs_bundle):
-    """從 CDS Hooks prefetch Observation bundle 中取得肌酐 (mg/dL)"""
+    """Extract creatinine (mg/dL) from CDS Hooks prefetch Observation bundle"""
     # MODIFIED: Use centralized LOINC codes for filtering
     CREATININE_LOINCS_SET = set(LOINC_CODES["CREATININE"])
     # Note: This simplified version takes the *first* valid entry found.
@@ -1787,7 +1787,7 @@ def get_creatinine_from_prefetch(obs_bundle):
 
 
 def get_platelet_from_prefetch(obs_bundle):
-    """從 CDS Hooks prefetch Observation bundle 中取得血小板數"""
+    """Extract platelet count from CDS Hooks prefetch Observation bundle"""
     # MODIFIED: Use centralized LOINC codes for filtering
     PLATELET_LOINCS_SET = set(LOINC_CODES["PLATELET"])
     # Note: This simplified version takes the *first* valid numeric entry found.
@@ -1821,7 +1821,7 @@ def get_platelet_from_prefetch(obs_bundle):
 
 # --- >> NEW HELPER: Extract direct eGFR from prefetch bundle << ---
 def get_direct_egfr_from_prefetch(egfr_obs_bundle):
-    """從預先取得的直接 eGFR Observation bundle (LOINC 33914-3) 中提取數值"""
+    """Extract value from prefetched direct eGFR Observation bundle (LOINC 33914-3)"""
     # MODIFIED: Use centralized LOINC codes for filtering (optional, as prefetch should be specific)
     EGFR_DIRECT_LOINCS_SET = set(LOINC_CODES["EGFR_DIRECT"])
 
@@ -1922,8 +1922,8 @@ def get_egfr_value_from_prefetch(prefetch_data, age, sex):
 
 # --- MODIFIED: get_condition_points_from_prefetch signature unchanged, but usage inside is affected ---
 def get_condition_points_from_prefetch(conditions_bundle, codes_score_2, prefix_rules, text_keywords_score_2, value_set_rules, local_valueset_rules, local_valuesets_definitions): # ADDED local_valueset_rules and definitions
-    """處理預先取得的 Condition bundle，使用傳入的代碼集、前綴、文字關鍵字和 ValueSet (URL and Local)。
-       MODIFIED: 不再於後端進行12個月日期過濾。
+    """Process prefetched Condition bundle using passed code sets, prefix rules, text keywords and ValueSet (URL and Local).
+       MODIFIED: No longer performs 12-month date filtering on backend.
        NOW RETURNS: (score, matched_details_list)
     """
     max_score = 0
@@ -1939,18 +1939,18 @@ def get_condition_points_from_prefetch(conditions_bundle, codes_score_2, prefix_
     #     app.logger.error(f"Error calculating date threshold for condition prefetch filter: {e}")
     today = datetime.date.today() # Still needed for prefix rule date conditions
 
-    processed_conditions = set() # 避免重複處理 bundle 中的相同資源
+    processed_conditions = set() # Avoid duplicate processing of same resources in bundle
     if conditions_bundle and "entry" in conditions_bundle:
         app.logger.info(f"Processing {len(conditions_bundle['entry'])} conditions from prefetch bundle.")
         for entry in conditions_bundle["entry"]:
-            if max_score == 2: break # 優化：如果已達最高分則停止處理
+            if max_score == 2: break # Optimization: if already reached max score, stop processing
 
             if "resource" in entry and entry["resource"]["resourceType"] == "Condition":
                 cond = entry["resource"]
-                cond_id = cond.get("id", f"nobundleid_{len(processed_conditions)}") # 如果沒ID，產生臨時ID
-                if cond_id in processed_conditions: continue # 跳過已處理的
+                cond_id = cond.get("id", f"nobundleid_{len(processed_conditions)}") # Generate a temporary ID if no ID exists
+                if cond_id in processed_conditions: continue # Skip if already processed
 
-                # --- 現有的計分邏輯 --- (Now applies to ALL conditions from prefetch)
+                # --- Existing scoring logic --- (Now applies to all conditions from prefetch)
                 # Still need to parse date for prefix rules that might have their own date conditions
                 recorded_date_str = cond.get("recordedDate")
                 parsed_date = None
@@ -1975,7 +1975,7 @@ def get_condition_points_from_prefetch(conditions_bundle, codes_score_2, prefix_
                         system = coding.get("system") # Get system from coding
                         if code:
                             code_upper = code.upper()
-                            # 檢查直接代碼匹配得分 2
+                            # Check direct code match for score 2
                             if (system, code) in codes_score_2: # Check (system, code) tuple
                                 if current_condition_max_score < 2:
                                     # Get condition display text
@@ -2001,7 +2001,7 @@ def get_condition_points_from_prefetch(conditions_bundle, codes_score_2, prefix_
                                 app.logger.debug(f"Condition ID {cond_id}: Code ({system}, {code}) matched direct rule for score 2.")
                                 break # Max score found for this condition from direct codes
 
-                            # 檢查前綴規則 (可能帶有它們自己的日期條件)
+                            # Check prefix rules (possible with their own date conditions)
                             for rule in prefix_rules:
                                 prefix_definition = rule.get("prefix")
                                 if not isinstance(prefix_definition, list) or len(prefix_definition) != 2:
@@ -2017,17 +2017,17 @@ def get_condition_points_from_prefetch(conditions_bundle, codes_score_2, prefix_
                                     rule_match = False
                                     if rule_conditions:
                                         req_status = rule_conditions.get("status"); date_condition_met = True
-                                        if req_status and status != req_status: continue # 狀態不符規則
+                                        if req_status and status != req_status: continue # Status does not match rule
 
-                                        # 檢查規則特定的日期條件 (使用已解析的 parsed_date)
+                                        # Check rule-specific date conditions (using parsed_date)
                                         max_m = rule_conditions.get("max_months_ago"); min_m = rule_conditions.get("min_months_ago")
-                                        if parsed_date: # 只有 Condition 本身有日期才能判斷規則日期
+                                        if parsed_date: # Only applicable if Condition has a date
                                             if max_m is not None and parsed_date < (today - datetime.timedelta(days=max_m * 30 + 15)): date_condition_met = False
                                             if min_m is not None and parsed_date >= (today - datetime.timedelta(days=min_m * 30 + 15)): date_condition_met = False
-                                        elif max_m is not None or min_m is not None: date_condition_met = False # 如果規則要求日期但 Condition 沒有日期，則不符合
+                                        elif max_m is not None or min_m is not None: date_condition_met = False # If rule requires date but Condition does not have one, it does not match
 
                                         if date_condition_met: rule_match = True
-                                    else: # 規則沒有特定條件，前綴匹配即可
+                                    else: # No specific conditions in this rule, prefix match is enough
                                         rule_match = True
 
                                     if rule_match:
@@ -2165,8 +2165,8 @@ def get_condition_points_from_prefetch(conditions_bundle, codes_score_2, prefix_
                             app.logger.warning(f"Prefetch Condition ID {cond_id}: Local ValueSet key '{local_vs_key}' not found or empty. Rule skipped.")
                 # --- End Local ValueSet Check (for prefetch) ---
 
-                max_score = max(max_score, current_condition_max_score) # 更新全局最高分
-                processed_conditions.add(cond_id) # 標記為已處理
+                max_score = max(max_score, current_condition_max_score) # Update global max score
+                processed_conditions.add(cond_id) # Mark as processed
 
     # Filter final matched details
     final_matched_details = []
@@ -2385,36 +2385,36 @@ def bleeding_risk_calculator():
 
     # --- Build CDS Card response ---
     cards = []
-    card_summary = f"出血風險評估: {risk} (評分 {score})"
+    card_summary = f"Bleeding Risk Assessment: {risk} (Score {score})"
 
     # Build detailed breakdown string using details dict for consistency
     card_detail = (
-        f"病人的出血風險評估為 **{risk}** (基於 ARC-HBR 標準因子評分)。\n\n"
-        f"**評分項目:**\n"
-        f"- 年齡: {details.get('age', '未知')} 歲 ({details.get('age_score_component', 0)} 分)\n"
-        f"- eGFR: {format(details.get('egfr_value'), '.1f') if details.get('egfr_value') is not None else '未知'} mL/min ({details.get('egfr_score_component', 0)} 分)\n"
-        f"- Hb: {format(details.get('hemoglobin'), '.1f') if details.get('hemoglobin') is not None else '未知'} g/dL (性別: {details.get('sex', '未知')}) ({details.get('hemoglobin_score_component', 0)} 分)\n"
-        f"- 血小板: {format(details.get('platelet'), '.1f') if details.get('platelet') is not None else '未知'} k/uL ({details.get('platelet_score_component', 0)} 分)\n"
-        f"- 特定診斷/文字 (Condition): {details.get('condition_points', 0)} 分\n"
-        f"- 特定用藥 (Medication): {details.get('medication_points', 0)} 分\n"
-        f"- 輸血 (Procedure): {details.get('blood_transfusion_points', 0)} 分\n\n"
+        f"Patient's bleeding risk assessment is **{risk}** (based on ARC-HBR standard factors scoring).\n\n"
+        f"**Score Components:**\n"
+        f"- Age: {details.get('age', 'Unknown')} years ({details.get('age_score_component', 0)} points)\n"
+        f"- eGFR: {format(details.get('egfr_value'), '.1f') if details.get('egfr_value') is not None else 'Unknown'} mL/min ({details.get('egfr_score_component', 0)} points)\n"
+        f"- Hb: {format(details.get('hemoglobin'), '.1f') if details.get('hemoglobin') is not None else 'Unknown'} g/dL (Gender: {details.get('sex', 'Unknown')}) ({details.get('hemoglobin_score_component', 0)} points)\n"
+        f"- Platelet: {format(details.get('platelet'), '.1f') if details.get('platelet') is not None else 'Unknown'} k/uL ({details.get('platelet_score_component', 0)} points)\n"
+        f"- Specific Diagnoses/Text (Condition): {details.get('condition_points', 0)} points\n"
+        f"- Specific Medications (Medication): {details.get('medication_points', 0)} points\n"
+        f"- Blood Transfusion (Procedure): {details.get('blood_transfusion_points', 0)} points\n\n"
     )
 
     # Add matched conditions details if any
     if matched_conditions_details:
-        card_detail += "**符合高風險的診斷:**\n"
+        card_detail += "**High-Risk Diagnoses Found:**\n"
         for cond in matched_conditions_details:
-            card_detail += f"- {cond.get('text', 'N/A')} ({cond.get('score_contribution', 0)} 分) - {cond.get('detail', '')}\n"
+            card_detail += f"- {cond.get('text', 'N/A')} ({cond.get('score_contribution', 0)} points) - {cond.get('detail', '')}\n"
         card_detail += "\n"
 
     # Add matched medications details if any
     if matched_medications_details:
-        card_detail += "**符合高風險的用藥:**\n"
+        card_detail += "**High-Risk Medications Found:**\n"
         for med in matched_medications_details:
-            card_detail += f"- {med.get('text', 'N/A')} ({med.get('score_contribution', 0)} 分) - {med.get('detail', '')}\n"
+            card_detail += f"- {med.get('text', 'N/A')} ({med.get('score_contribution', 0)} points) - {med.get('detail', '')}\n"
         card_detail += "\n"
 
-    card_detail += f"**總分: {score}**"
+    card_detail += f"**Total Score: {score}**"
 
     indicator_type = "info" # Default
     if risk == FINAL_RISK_THRESHOLD_CONFIG.get('high_risk_label', 'high'):
@@ -2427,26 +2427,21 @@ def bleeding_risk_calculator():
         "summary": card_summary,
         "indicator": indicator_type,
         "detail": card_detail,
-        "source": { "label": "出血風險計算器 (FHIR0730 CDS Service)" }
+        "source": { "label": "Bleeding Risk Calculator (FHIR0730 CDS Service)" }
     }
 
     # Add suggestions/links only if high risk
     high_risk_label_actual = FINAL_RISK_THRESHOLD_CONFIG.get('high_risk_label', 'high')
     if risk == high_risk_label_actual:
         card["suggestions"] = [
-            { "label": "查閱高出血風險(HBR)處置建議",
+            { "label": "Review High Bleeding Risk (HBR) Management Guidelines",
               "actions": [ {
                   "type": "open-url",
-                  "description": "開啟 ESC 2020 HBR 指引參考 (Eur Heart J)",
+                  "description": "Open ESC 2020 HBR Guidelines Reference (Eur Heart J)",
                   "url": "https://academic.oup.com/eurheartj/article/42/13/1289/5901694"
               } ]
             }
         ]
-        # Optional static link (ensure image exists in static/images)
-        # try:
-        #      image_url = url_for('static', filename='images/HBR_guideline.jpg', _external=True)
-        #      card["links"] = [ { "label": "本地用藥建議圖示", "url": image_url, "type": "absolute" } ]
-        # except Exception as e: app.logger.warning(f"Could not generate external URL for static image: {e}")
 
     cards.append(card)
     app.logger.info(f"Returning {len(cards)} CDS card(s) for patient {patient_id}.")
@@ -2461,7 +2456,7 @@ def bleeding_risk_calculator():
 def calculate_risk_ui_page():
     patient_id = session.get('patient_id')
     if not patient_id:
-        flash("沒有選擇的病患，無法進行計算。", "warning")
+        flash("No patient selected, unable to perform calculation.", "warning")
         return redirect(url_for('main_app_page'))
 
     app.logger.info(f"Initiating bleeding risk calculation for UI display for patient: {patient_id}")
@@ -2476,7 +2471,7 @@ def calculate_risk_ui_page():
         sex = patient_resource.get("gender", "unknown")
         app.logger.info(f"Patient {patient_id}: Age={age}, Sex={sex}")
     else:
-        flash(f"無法獲取病患 {patient_id} 的基本資訊。計算可能不完整。", "danger")
+        flash(f"Unable to retrieve basic information for patient {patient_id}. Calculation may be incomplete.", "danger")
 
     # 2. Fetch Lab Values and eGFR
     hb_value = get_hemoglobin(patient_id)
@@ -2519,7 +2514,7 @@ def calculate_risk_ui_page():
 
     if not bleeding_risk_result:
         app.logger.error(f"Failed to calculate bleeding risk for patient {patient_id} for UI.")
-        flash("計算出血風險時發生錯誤。", "danger")
+        flash("Error occurred while calculating bleeding risk.", "danger")
         bleeding_risk_result = {}
 
     # Prepare data for template
@@ -2547,7 +2542,7 @@ def calculate_risk_ui_page():
     app.logger.info(f"Passing high_risk_label_for_template: {actual_high_risk_label} to calculate_risk_ui.html")
 
     return render_template('calculate_risk_ui.html', 
-                           title="出血風險計算結果", 
+                           title="Bleeding Risk Calculation Results", 
                            patient_id=patient_id,
                            calculation_details=calculation_details,
                            high_risk_label_for_template=actual_high_risk_label) # Pass the label

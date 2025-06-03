@@ -1,84 +1,478 @@
 {% extends "layout.html" %}
 {% block content %}
-    <h2>{{ title }} - 病患 ID: {{ patient_id }}</h2>
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-12">
+                <!-- Header -->
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <div>
+                        <h2 class="mb-1">{{ title }} - Patient ID: {{ patient_id }}</h2>
+                        <p class="text-muted mb-0">
+                            <i class="fas fa-info-circle mr-1"></i>
+                            ARC-HBR Bleeding Risk Assessment based on clinical factors
+                        </p>
+                    </div>
+                    <div>
+                        <a href="{{ url_for('main_app_page') }}" class="btn btn-outline-secondary">
+                            <i class="fas fa-arrow-left mr-2"></i>Back to Main
+                        </a>
+                    </div>
+                </div>
 
-    {% if calculation_details and calculation_details.category %}
-        <div class="alert alert-{% if calculation_details.category == high_risk_label_for_template %}danger{% elif calculation_details.category == 'medium' %}warning{% else %}info{% endif %}" role="alert">
-            <h4>出血風險等級: <span style="text-transform: capitalize;">{{ calculation_details.category }}</span> (總分: {{ calculation_details.score }})</h4>
-        </div>
+                {% if calculation_details and calculation_details.category %}
+                    <!-- Risk Category Alert -->
+                    <div class="alert alert-{% if calculation_details.category == high_risk_label_for_template %}danger{% elif calculation_details.category == 'medium' %}warning{% else %}info{% endif %} shadow-sm" role="alert">
+                        <div class="d-flex align-items-center">
+                            <div class="mr-3">
+                                {% if calculation_details.category == high_risk_label_for_template %}
+                                    <i class="fas fa-exclamation-triangle fa-2x"></i>
+                                {% elif calculation_details.category == 'medium' %}
+                                    <i class="fas fa-exclamation-circle fa-2x"></i>
+                                {% else %}
+                                    <i class="fas fa-check-circle fa-2x"></i>
+                                {% endif %}
+                            </div>
+                            <div>
+                                <h4 class="alert-heading mb-1">
+                                    Bleeding Risk Level: 
+                                    <span class="font-weight-bold text-uppercase">{{ calculation_details.category }}</span>
+                                </h4>
+                                <p class="mb-0">
+                                    <strong>Total Score: {{ calculation_details.score }}</strong>
+                                    {% if calculation_details.category == high_risk_label_for_template %}
+                                        - <strong>Consider enhanced bleeding precautions and frequent monitoring</strong>
+                                    {% elif calculation_details.category == 'medium' %}
+                                        - Standard monitoring with caution
+                                    {% else %}
+                                        - Consider de-escalate or shorten antithrombotic treatment
+                                    {% endif %}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
 
-        <h3>計算細節:</h3>
-        <table class="table table-bordered table-sm">
-            <tbody>
-                <tr><th>年齡:</th><td>{{ calculation_details.age if calculation_details.age is not none else '未知' }}</td></tr>
-                <tr><th>性別:</th><td>{{ calculation_details.sex if calculation_details.sex else '未知' }}</td></tr>
-                <tr><th>Hb (g/dL):</th><td>{{ "%.1f" | format(calculation_details.hb_value) if calculation_details.hb_value is not none else '未測量或未知' }}</td></tr>
-                <tr><th>血小板 (k/uL):</th><td>{{ "%.0f" | format(calculation_details.platelet_value) if calculation_details.platelet_value is not none else '未測量或未知' }}</td></tr>
-                <tr><th>eGFR (mL/min):</th><td>{{ "%.0f" | format(calculation_details.egfr_value) if calculation_details.egfr_value is not none else '未測量或未知' }}</td></tr>
-                <tr><th>特定診斷/文字點數:</th><td>{{ calculation_details.condition_points }}</td></tr>
-                <tr><th>特定用藥點數:</th><td>{{ calculation_details.medication_points }}</td></tr>
-                <tr><th>輸血點數:</th><td>{{ calculation_details.blood_transfusion_points }}</td></tr>
-            </tbody>
-        </table>
+                    <div class="row">
+                        <!-- Left Column: Patient Demographics and Lab Values -->
+                        <div class="col-lg-6 mb-4">
+                            <div class="card h-100 shadow-sm">
+                                <div class="card-header bg-primary text-white">
+                                    <h5 class="mb-0">
+                                        <i class="fas fa-user-md mr-2"></i>Patient Demographics & Lab Values
+                                    </h5>
+                                </div>
+                                <div class="card-body">
+                                    <table class="table table-borderless">
+                                        <tbody>
+                                            <tr>
+                                                <th class="w-40">Age:</th>
+                                                <td>
+                                                    <span class="badge badge-secondary">
+                                                        {{ calculation_details.age if calculation_details.age is not none else 'Unknown' }} years
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <th>Gender:</th>
+                                                <td>
+                                                    <span class="badge badge-info">
+                                                        {{ calculation_details.sex.title() if calculation_details.sex else 'Unknown' }}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <th>Hemoglobin (g/dL):</th>
+                                                <td>
+                                                    {% if calculation_details.hb_value is not none %}
+                                                        <span class="badge badge-{% if calculation_details.score_details.hemoglobin_score_component > 0 %}warning{% else %}success{% endif %}">
+                                                            {{ "%.1f" | format(calculation_details.hb_value) }}
+                                                        </span>
+                                                        {% if calculation_details.score_details.hemoglobin_score_component > 0 %}
+                                                            <small class="text-warning ml-2">
+                                                                <i class="fas fa-exclamation-triangle"></i> Below threshold
+                                                            </small>
+                                                        {% endif %}
+                                                    {% else %}
+                                                        <span class="badge badge-secondary">Not measured</span>
+                                                    {% endif %}
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <th>Platelet (k/uL):</th>
+                                                <td>
+                                                    {% if calculation_details.platelet_value is not none %}
+                                                        <span class="badge badge-{% if calculation_details.score_details.platelet_score_component > 0 %}warning{% else %}success{% endif %}">
+                                                            {{ "%.0f" | format(calculation_details.platelet_value) }}
+                                                        </span>
+                                                        {% if calculation_details.score_details.platelet_score_component > 0 %}
+                                                            <small class="text-warning ml-2">
+                                                                <i class="fas fa-exclamation-triangle"></i> Below threshold
+                                                            </small>
+                                                        {% endif %}
+                                                    {% else %}
+                                                        <span class="badge badge-secondary">Not measured</span>
+                                                    {% endif %}
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <th>eGFR (mL/min):</th>
+                                                <td>
+                                                    {% if calculation_details.egfr_value is not none %}
+                                                        <span class="badge badge-{% if calculation_details.score_details.egfr_score_component > 0 %}warning{% else %}success{% endif %}">
+                                                            {{ "%.0f" | format(calculation_details.egfr_value) }}
+                                                        </span>
+                                                        {% if calculation_details.score_details.egfr_score_component > 0 %}
+                                                            <small class="text-warning ml-2">
+                                                                <i class="fas fa-exclamation-triangle"></i> Below threshold
+                                                            </small>
+                                                        {% endif %}
+                                                    {% else %}
+                                                        <span class="badge badge-secondary">Not measured</span>
+                                                    {% endif %}
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
 
-        {% if calculation_details.matched_transfusions %}
-            <h5>符合條件的輸血記錄 (過去12個月內):</h5>
-            <ul>
-            {% for trans in calculation_details.matched_transfusions %}
-                <li>{{ trans.text }} ({{ trans.date[:10] }}) - 原因: {{ trans.reason }}</li>
-            {% endfor %}
-            </ul>
-        {% endif %}
+                        <!-- Right Column: Risk Factor Points -->
+                        <div class="col-lg-6 mb-4">
+                            <div class="card h-100 shadow-sm">
+                                <div class="card-header bg-success text-white">
+                                    <h5 class="mb-0">
+                                        <i class="fas fa-calculator mr-2"></i>Risk Factor Points Breakdown
+                                    </h5>
+                                </div>
+                                <div class="card-body">
+                                    <table class="table table-borderless">
+                                        <tbody>
+                                            <tr>
+                                                <th class="w-60">Age Component:</th>
+                                                <td class="text-right">
+                                                    <span class="badge badge-{% if calculation_details.score_details.age_score_component > 0 %}warning{% else %}light{% endif %} badge-lg">
+                                                        {{ calculation_details.score_details.age_score_component }} points
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <th>eGFR Component:</th>
+                                                <td class="text-right">
+                                                    <span class="badge badge-{% if calculation_details.score_details.egfr_score_component > 0 %}warning{% else %}light{% endif %} badge-lg">
+                                                        {{ calculation_details.score_details.egfr_score_component }} points
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <th>Hemoglobin Component:</th>
+                                                <td class="text-right">
+                                                    <span class="badge badge-{% if calculation_details.score_details.hemoglobin_score_component > 0 %}warning{% else %}light{% endif %} badge-lg">
+                                                        {{ calculation_details.score_details.hemoglobin_score_component }} points
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <th>Platelet Component:</th>
+                                                <td class="text-right">
+                                                    <span class="badge badge-{% if calculation_details.score_details.platelet_score_component > 0 %}warning{% else %}light{% endif %} badge-lg">
+                                                        {{ calculation_details.score_details.platelet_score_component }} points
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <th>Clinical Conditions:</th>
+                                                <td class="text-right">
+                                                    <span class="badge badge-{% if calculation_details.condition_points > 0 %}danger{% else %}light{% endif %} badge-lg">
+                                                        {{ calculation_details.condition_points }} points
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <th>Medications:</th>
+                                                <td class="text-right">
+                                                    <span class="badge badge-{% if calculation_details.medication_points > 0 %}danger{% else %}light{% endif %} badge-lg">
+                                                        {{ calculation_details.medication_points }} points
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <th>Blood Transfusions:</th>
+                                                <td class="text-right">
+                                                    <span class="badge badge-{% if calculation_details.blood_transfusion_points > 0 %}danger{% else %}light{% endif %} badge-lg">
+                                                        {{ calculation_details.blood_transfusion_points }} points
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                            <tr class="border-top">
+                                                <th class="h5">Total Score:</th>
+                                                <td class="text-right">
+                                                    <span class="badge badge-{% if calculation_details.category == high_risk_label_for_template %}danger{% elif calculation_details.category == 'medium' %}warning{% else %}success{% endif %} badge-lg h5 mb-0">
+                                                        {{ calculation_details.score }} points
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
 
-        {# Display Matched Conditions #}
-        {% if calculation_details.matched_conditions %}
-            <h5>導致評分的診斷/情況:</h5>
-            <ul class="list-group mb-3">
-            {% for cond_detail in calculation_details.matched_conditions %}
-                <li class="list-group-item">
-                    <strong>{{ cond_detail.text }}</strong> ({{ cond_detail.date }})
-                    <br><small>原因: {{ cond_detail.detail }} - 貢獻分數: {{ cond_detail.score_contribution }}</small>
-                </li>
-            {% endfor %}
-            </ul>
-        {% endif %}
+                    <!-- Matched Conditions Section -->
+                    {% if calculation_details.matched_conditions %}
+                        <div class="card shadow-sm mb-4">
+                            <div class="card-header bg-warning text-dark">
+                                <h5 class="mb-0">
+                                    <i class="fas fa-notes-medical mr-2"></i>
+                                    High-Risk Clinical Conditions ({{ calculation_details.matched_conditions|length }})
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    {% for cond in calculation_details.matched_conditions %}
+                                        <div class="col-md-6 mb-3">
+                                            <div class="border rounded p-3 h-100">
+                                                <h6 class="font-weight-bold text-danger">
+                                                    <i class="fas fa-circle text-danger mr-2" style="font-size: 0.5rem;"></i>
+                                                    {{ cond.get('text', 'N/A') }}
+                                                </h6>
+                                                <p class="mb-1">
+                                                    <strong>Points:</strong> 
+                                                    <span class="badge badge-danger">{{ cond.get('score_contribution', 0) }}</span>
+                                                </p>
+                                                <p class="mb-1">
+                                                    <strong>Match:</strong> 
+                                                    <small class="text-muted">{{ cond.get('detail', '') }}</small>
+                                                </p>
+                                                <p class="mb-0">
+                                                    <strong>Date:</strong> 
+                                                    <small class="text-muted">{{ cond.get('date', 'N/A') }}</small>
+                                                </p>
+                                            </div>
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                    {% endif %}
 
-        {# Display Matched Medications #}
-        {% if calculation_details.matched_medications %}
-            <h5>導致評分的藥物:</h5>
-            <ul class="list-group mb-3">
-            {% for med_detail in calculation_details.matched_medications %}
-                <li class="list-group-item">
-                    <strong>{{ med_detail.text }}</strong>
-                    <br><small>原因: {{ med_detail.detail }} (類型: {{ med_detail.type }}) - 貢獻分數: {{ med_detail.score_contribution }}</small>
-                </li>
-            {% endfor %}
-            </ul>
-        {% endif %}
+                    <!-- Matched Medications Section -->
+                    {% if calculation_details.matched_medications %}
+                        <div class="card shadow-sm mb-4">
+                            <div class="card-header bg-info text-white">
+                                <h5 class="mb-0">
+                                    <i class="fas fa-pills mr-2"></i>
+                                    High-Risk Medications ({{ calculation_details.matched_medications|length }})
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    {% for med in calculation_details.matched_medications %}
+                                        <div class="col-md-6 mb-3">
+                                            <div class="border rounded p-3 h-100">
+                                                <h6 class="font-weight-bold text-primary">
+                                                    <i class="fas fa-pill text-primary mr-2"></i>
+                                                    {{ med.get('text', 'N/A') }}
+                                                </h6>
+                                                <p class="mb-1">
+                                                    <strong>Points:</strong> 
+                                                    <span class="badge badge-{% if med.get('type') == 'OAC' %}danger{% else %}warning{% endif %}">
+                                                        {{ med.get('score_contribution', 0) }}
+                                                    </span>
+                                                </p>
+                                                <p class="mb-1">
+                                                    <strong>Type:</strong> 
+                                                    <span class="badge badge-secondary">{{ med.get('type', 'Unknown') }}</span>
+                                                </p>
+                                                <p class="mb-0">
+                                                    <strong>Match:</strong> 
+                                                    <small class="text-muted">{{ med.get('detail', '') }}</small>
+                                                </p>
+                                            </div>
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                    {% endif %}
 
-        <h4>原始評分項目 (來自設定檔):</h4>
-        <pre style="max-height: 200px; overflow-y: auto; background-color: #f8f9fa; padding: 10px; border-radius: 5px;">{{ calculation_details.score_details | tojson(indent=2) }}</pre>
+                    <!-- Blood Transfusion Section -->
+                    {% if calculation_details.matched_transfusions %}
+                        <div class="card shadow-sm mb-4">
+                            <div class="card-header bg-danger text-white">
+                                <h5 class="mb-0">
+                                    <i class="fas fa-tint mr-2"></i>
+                                    Blood Transfusions (Past 12 months)
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    {% for trans in calculation_details.matched_transfusions %}
+                                        <div class="col-md-6 mb-3">
+                                            <div class="border rounded p-3 h-100">
+                                                <h6 class="font-weight-bold text-danger">
+                                                    <i class="fas fa-tint text-danger mr-2"></i>
+                                                    {{ trans.text }}
+                                                </h6>
+                                                <p class="mb-1">
+                                                    <strong>Date:</strong> {{ trans.date[:10] }}
+                                                </p>
+                                                <p class="mb-0">
+                                                    <strong>Reason:</strong> {{ trans.reason }}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                    {% endif %}
 
-        {# NEW: Conditional link for high risk guideline image #}
-        {% if calculation_details.category == high_risk_label_for_template %}
-            <div class="mt-3">
-                <a href="{{ url_for('static', filename='images/HBR_guideline.jpg') }}" target="_blank" class="btn btn-danger">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-exclamation-triangle-fill" viewBox="0 0 16 16" style="margin-right: 5px;">
-                        <path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/>
-                    </svg>
-                    查閱高出血風險(HBR)處置建議指引圖示
-                </a>
+                    <!-- High Risk Guideline Section -->
+                    {% if calculation_details.category == high_risk_label_for_template %}
+                        <div class="card shadow-sm mb-4 border-danger">
+                            <div class="card-header bg-danger text-white">
+                                <h5 class="mb-0">
+                                    <i class="fas fa-exclamation-triangle mr-2"></i>
+                                    High Bleeding Risk (HBR) Management Guidelines
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="alert alert-warning">
+                                    <h6><i class="fas fa-info-circle mr-2"></i>Clinical Recommendations:</h6>
+                                    <ul class="mb-0">
+                                        <li>Consider enhanced bleeding precautions</li>
+                                        <li>Monitor more frequently for bleeding events</li>
+                                        <li>Review anticoagulation therapy if applicable</li>
+                                        <li>Consult ESC 2020 HBR guidelines for detailed recommendations</li>
+                                    </ul>
+                                </div>
+                                <div class="text-center">
+                                    <a href="{{ url_for('static', filename='images/HBR_guideline.jpg') }}" 
+                                       target="_blank" 
+                                       class="btn btn-danger btn-lg">
+                                        <i class="fas fa-external-link-alt mr-2"></i>
+                                        View HBR Management Guidelines Image
+                                    </a>
+                                    <div class="mt-2">
+                                        <a href="https://academic.oup.com/eurheartj/article/42/13/1289/5901694" 
+                                           target="_blank" 
+                                           class="btn btn-outline-danger">
+                                            <i class="fas fa-book-medical mr-2"></i>
+                                            ESC 2020 HBR Guidelines (External Link)
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    {% endif %}
+
+                    <!-- Technical Details (Collapsible) -->
+                    <div class="card shadow-sm">
+                        <div class="card-header">
+                            <button class="btn btn-link btn-block text-left" type="button" 
+                                    data-toggle="collapse" data-target="#technicalDetails" 
+                                    aria-expanded="false" aria-controls="technicalDetails">
+                                <i class="fas fa-cogs mr-2"></i>
+                                Technical Calculation Details
+                                <i class="fas fa-chevron-down float-right"></i>
+                            </button>
+                        </div>
+                        <div id="technicalDetails" class="collapse">
+                            <div class="card-body">
+                                <h6>Risk Parameters Configuration:</h6>
+                                <pre class="bg-light p-3" style="max-height: 300px; overflow-y: auto;">{{ calculation_details.risk_params | tojson(indent=2) }}</pre>
+                                
+                                <h6 class="mt-4">Complete Score Details:</h6>
+                                <pre class="bg-light p-3" style="max-height: 300px; overflow-y: auto;">{{ calculation_details.score_details | tojson(indent=2) }}</pre>
+                            </div>
+                        </div>
+                    </div>
+
+                {% else %}
+                    <!-- Error State -->
+                    <div class="alert alert-danger shadow-sm" role="alert">
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-exclamation-triangle fa-2x mr-3"></i>
+                            <div>
+                                <h4 class="alert-heading">Unable to Calculate or Display Bleeding Risk</h4>
+                                <p class="mb-0">Please check if the data is complete or try again later.</p>
+                            </div>
+                        </div>
+                    </div>
+                {% endif %}
+
+                <!-- Action Buttons -->
+                <div class="d-flex justify-content-between mt-4">
+                    <div>
+                        <a href="{{ url_for('main_app_page') }}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left mr-2"></i>Back to Main Application
+                        </a>
+                    </div>
+                    <div>
+                        {% if session.get('fhir_server_url') %}
+                            <a href="https://launch.smarthealthit.org/launcher?iss={{ session.get('fhir_server_url') }}" 
+                               class="btn btn-outline-primary">
+                                <i class="fas fa-exchange-alt mr-2"></i>
+                                Return to EHR to Select Other Patients
+                            </a>
+                        {% endif %}
+                    </div>
+                </div>
             </div>
-        {% endif %}
-
-    {% else %}
-        <div class="alert alert-warning" role="alert">
-            無法計算或顯示出血風險。請檢查資料是否完整或稍後再試。
         </div>
-    {% endif %}
-
-    <a href="{{ url_for('main_app_page') }}" class="btn btn-secondary mt-3">返回主應用頁面</a>
-    {% if session.get('fhir_server_url') %}
-        <a href="https://launch.smarthealthit.org/launcher?iss={{ session.get('fhir_server_url') }}" class="btn btn-outline-secondary mt-3 ml-2">返回EHR選擇其他病患</a>
-    {% endif %}
+    </div>
 {% endblock %}
+
+<!-- Custom CSS for Enhanced Risk Level Styling -->
+<style>
+    /* Enhanced styling for high bleeding risk alert */
+    .alert-danger {
+        background: linear-gradient(135deg, #dc3545 0%, #c82333 100%) !important;
+        border: 2px solid #bd2130 !important;
+        color: white !important;
+        font-weight: 500;
+        box-shadow: 0 4px 8px rgba(220, 53, 69, 0.3) !important;
+    }
+    
+    .alert-danger .alert-heading {
+        color: white !important;
+        text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+    }
+    
+    .alert-danger .fas {
+        text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+        animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.05); }
+        100% { transform: scale(1); }
+    }
+    
+    /* Enhanced warning styling for medium risk */
+    .alert-warning {
+        background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%) !important;
+        border: 2px solid #d39e00 !important;
+        color: #212529 !important;
+        font-weight: 500;
+        box-shadow: 0 4px 8px rgba(255, 193, 7, 0.3) !important;
+    }
+    
+    /* Badge styling enhancements */
+    .badge-lg {
+        font-size: 1rem;
+        padding: 0.5rem 1rem;
+    }
+    
+    .badge-danger {
+        background: linear-gradient(135deg, #dc3545 0%, #c82333 100%) !important;
+        box-shadow: 0 2px 4px rgba(220, 53, 69, 0.3);
+    }
+    
+    .badge-warning {
+        background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%) !important;
+        box-shadow: 0 2px 4px rgba(255, 193, 7, 0.3);
+    }
+</style>

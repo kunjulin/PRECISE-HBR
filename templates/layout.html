@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -89,13 +89,13 @@
             <ul class="navbar-nav mr-auto">
                 <li class="nav-item">
                     <a class="nav-link" href="{{ url_for('index') }}">
-                        <i class="fas fa-home mr-1"></i>首頁
+                        <i class="fas fa-home mr-1"></i>Home
                     </a>
                 </li>
                 {% if current_user.is_authenticated %}
                 <li class="nav-item">
                     <a class="nav-link" href="{{ url_for('main_app_page') }}">
-                        <i class="fas fa-tachometer-alt mr-1"></i>主應用
+                        <i class="fas fa-tachometer-alt mr-1"></i>Main App
                     </a>
                 </li>
                 {% endif %}
@@ -105,16 +105,16 @@
                     <li class="nav-item">
                         <span class="navbar-text">
                             <i class="fas fa-user mr-1"></i>
-                            已登入：{{ current_user.name }} | 
+                            Logged in: {{ current_user.name }} | 
                         </span>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('logout') }}">
-                            <i class="fas fa-sign-out-alt mr-1"></i>登出
+                            <i class="fas fa-sign-out-alt mr-1"></i>Logout
                         </a>
                     </li>
                 {% else %}
-                    <!-- <li class="nav-item"><a class="nav-link" href="#">登入 (EHR Launch)</a></li> -->
+                    <!-- <li class="nav-item"><a class="nav-link" href="#">Login (EHR Launch)</a></li> -->
                 {% endif %}
             </ul>
         </div>
