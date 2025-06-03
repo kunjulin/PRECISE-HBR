@@ -1,5 +1,5 @@
 {
-    "version": "1.1.0",
+    "version": "1.2.0",
     "guideline_source": "Based on ARC-HBR 2019 consensus document and clinical evidence",
     "scoring_logic": {
         "major_criterion_score": 2,
@@ -20,16 +20,20 @@
         "portal_hypertension_snomed": [
             ["http://snomed.info/sct", "74730006"],
             ["http://snomed.info/sct", "37328000"],
+            ["http://snomed.info/sct", "34742003"],
             ["http://snomed.info/sct", "199320001"],
             ["http://snomed.info/sct", "235896002"],
-            ["http://snomed.info/sct", "31712002"]
+            ["http://snomed.info/sct", "31712002"],
+            ["http://snomed.info/sct", "19943007"]
         ],
         "prior_bleeding_snomed": [
             ["http://snomed.info/sct", "162050001"],
+            ["http://snomed.info/sct", "131148009"],
             ["http://snomed.info/sct", "428860009"],
             ["http://snomed.info/sct", "429044007"],
             ["http://snomed.info/sct", "443760008"],
             ["http://snomed.info/sct", "275190004"],
+            ["http://snomed.info/sct", "1386000"],
             ["http://snomed.info/sct", "95545007"],
             ["http://snomed.info/sct", "74474003"]
         ],
@@ -54,12 +58,6 @@
             ["http://snomed.info/sct", "234466008"],
             ["http://snomed.info/sct", "432504007"],
             ["http://snomed.info/sct", "95457008"]
-        ],
-        "cirrhosis_portal_hypertension_snomed": [
-            ["http://snomed.info/sct", "19943007"],
-            ["http://snomed.info/sct", "31712002"],
-            ["http://snomed.info/sct", "235896002"],
-            ["http://snomed.info/sct", "37328000"]
         ]
     },
     "medication_codings": {
@@ -120,70 +118,20 @@
         ]
     },
     "condition_rules": {
-        "codes_score_2": [
-            ["http://hl7.org/fhir/sid/icd-10-cm", "Q280"],
-            ["http://hl7.org/fhir/sid/icd-10-cm", "Q282"],
-            ["http://hl7.org/fhir/sid/icd-10-cm", "K766"],
-            ["http://hl7.org/fhir/sid/icd-10-cm", "K7881"],
-            ["http://hl7.org/fhir/sid/icd-10-cm", "K7469"],
-            ["http://hl7.org/fhir/sid/icd-10-cm", "K250"],
-            ["http://hl7.org/fhir/sid/icd-10-cm", "K254"],
-            ["http://hl7.org/fhir/sid/icd-10-cm", "K260"],
-            ["http://hl7.org/fhir/sid/icd-10-cm", "K264"],
-            ["http://hl7.org/fhir/sid/icd-10-cm", "K270"],
-            ["http://hl7.org/fhir/sid/icd-10-cm", "K280"],
-            ["http://hl7.org/fhir/sid/icd-10-cm", "K284"],
-            ["http://hl7.org/fhir/sid/icd-10-cm", "K5521"],
-            ["http://hl7.org/fhir/sid/icd-10-cm", "K8501"],
-            ["http://hl7.org/fhir/sid/icd-10-cm", "K2901"],
-            ["http://hl7.org/fhir/sid/icd-10-cm", "K7031"],
-            ["http://hl7.org/fhir/sid/icd-10-cm", "K7460"],
-            ["http://hl7.org/fhir/sid/icd-10-cm", "K745"],
-            ["http://hl7.org/fhir/sid/icd-10-cm", "K744"],
-            ["http://hl7.org/fhir/sid/icd-10-cm", "K743"],
-            ["http://hl7.org/fhir/sid/icd-10-cm", "K717"],
-            ["http://hl7.org/fhir/sid/icd-10-cm", "K7030"],
-            ["http://hl7.org/fhir/sid/icd-10-cm", "I8501"],
-            ["http://hl7.org/fhir/sid/icd-10-cm", "I8510"],
-            ["http://hl7.org/fhir/sid/icd-10-cm", "I8511"],
-            ["http://hl7.org/fhir/sid/icd-10-cm", "K2081"],
-            ["http://hl7.org/fhir/sid/icd-10-cm", "K2091"],
-            ["http://hl7.org/fhir/sid/icd-10-cm", "K2101"],
-            ["http://hl7.org/fhir/sid/icd-10-cm", "K2211"],
-            ["http://snomed.info/sct", "19943007"],
-            ["http://snomed.info/sct", "34742003"],
-            ["http://snomed.info/sct", "64779008"],
-            ["http://snomed.info/sct", "131148009"],
-            ["http://snomed.info/sct", "116859006"],
-            ["http://hl7.org/fhir/sid/icd-10-cm", "I61"],
-            ["http://hl7.org/fhir/sid/icd-10-cm", "D68"]
-        ],
         "prefix_rules": [
-            {"prefix": ["http://hl7.org/fhir/sid/icd-10-cm", "I61"], "score": 2, "conditions": null, "description": "Intracranial hemorrhage"},
-            {"prefix": ["http://snomed.info/sct", "1386000"], "score": 2, "conditions": null, "description": "Intracranial hemorrhage"},
-            {"prefix": ["http://hl7.org/fhir/sid/icd-10-cm", "C"], "score": 2, "conditions": {"status": "active", "max_months_ago": 12}, "description": "Active cancer within 12 months"},
             {"prefix": ["http://snomed.info/sct", "363346000"], "score": 2, "conditions": {"status": "active", "max_months_ago": 12}, "description": "Active malignancy"},
-            {"prefix": ["http://hl7.org/fhir/sid/icd-10-cm", "I63"], "score": 2, "conditions": {"max_months_ago": 6}, "description": "Moderate/severe ischemic stroke within 6 months"},
             {"prefix": ["http://snomed.info/sct", "422504002"], "score": 2, "conditions": {"max_months_ago": 6}, "description": "Ischemic stroke within 6 months"},
-            {"prefix": ["http://hl7.org/fhir/sid/icd-10-cm", "I63"], "score": 1, "conditions": {"min_months_ago": 6, "max_months_ago": 12}, "description": "Ischemic stroke 6-12 months ago"},
-            {"prefix": ["http://snomed.info/sct", "422504002"], "score": 1, "conditions": {"min_months_ago": 6, "max_months_ago": 12}, "description": "Ischemic stroke 6-12 months ago"},
-            {"prefix": ["http://hl7.org/fhir/sid/icd-10-cm", "D68"], "score": 2, "conditions": null, "description": "Bleeding disorders"},
-            {"prefix": ["http://hl7.org/fhir/sid/icd-10-cm", "K70"], "score": 2, "conditions": null, "description": "Alcoholic liver disease with portal hypertension"},
-            {"prefix": ["http://hl7.org/fhir/sid/icd-10-cm", "K74"], "score": 2, "conditions": null, "description": "Fibrosis and cirrhosis of liver"}
+            {"prefix": ["http://snomed.info/sct", "422504002"], "score": 1, "conditions": {"min_months_ago": 6, "max_months_ago": 12}, "description": "Ischemic stroke 6-12 months ago"}
         ],
         "text_keywords_score_2": [
             "with bleeding",
-            "bleeding",
             "with hemorrhage",
-            "hemorrhage",
-            "cirrhosis",
             "malignant neoplasm",
             "carcinoma",
             "cancer",
             "portal hypertension",
             "bleeding diathesis",
             "coagulopathy",
-            "thrombocytopenia",
             "von willebrand",
             "hemophilia"
         ],
@@ -191,8 +139,7 @@
             "mild stroke",
             "transient ischemic attack",
             "TIA",
-            "chronic kidney disease stage 3",
-            "mild anemia"
+            "lacunar"
         ]
     },
     "risk_score_parameters": {
@@ -200,11 +147,6 @@
             "threshold": 75, 
             "score": 1,
             "description": "Age ≥75 years (ARC-HBR minor criterion)"
-        },
-        "age_gte_65_params": { 
-            "threshold": 65, 
-            "score": 0.5,
-            "description": "Age 65-74 years (intermediate risk)"
         },
         "egfr_lt_15_params": { 
             "threshold": 15, 
@@ -215,11 +157,6 @@
             "threshold": 30, 
             "score": 2,
             "description": "Moderate-severe CKD eGFR <30 (ARC-HBR major criterion)"
-        },
-        "egfr_lt_45_params": { 
-            "threshold": 45, 
-            "score": 1,
-            "description": "Moderate CKD eGFR 30-59 (ARC-HBR minor criterion)"
         },
         "egfr_30_to_59_params": { 
             "threshold_min": 30,
@@ -299,7 +236,6 @@
         {
             "valueset_key": "prior_bleeding_snomed",
             "score": 1,
-            "conditions": {"min_months_ago": 6, "max_months_ago": 12},
             "description": "Prior bleeding 6-12 months ago (ARC-HBR minor criterion)"
         },
         {
@@ -338,7 +274,7 @@
             "Oral anticoagulation",
             "Severe CKD (eGFR <30)",
             "Severe anemia (Hb <11 g/dL)",
-            "Prior bleeding within 6 months",
+            "Prior bleeding",
             "Thrombocytopenia (<100 k/uL)",
             "Chronic bleeding diathesis",
             "Cirrhosis with portal hypertension",
@@ -351,7 +287,6 @@
             "Age ≥75 years",
             "Moderate CKD (eGFR 30-59)",
             "Mild anemia (sex-specific thresholds)",
-            "Prior bleeding 6-12 months ago",
             "Ischemic stroke >6 months ago",
             "Long-term NSAID/steroid use"
         ],

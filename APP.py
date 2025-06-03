@@ -25,6 +25,36 @@ from flask_cors import CORS
 
 # --- Load Environment Variables ---
 load_dotenv()
+
+# --- >> PRODUCTION SECURITY: Environment Variables Validation << ---
+REQUIRED_ENV_VARS = [
+    'FLASK_SECRET_KEY',
+    'SMART_CLIENT_ID',
+    'SMART_REDIRECT_URI',
+    'APP_BASE_URL'
+]
+
+def validate_environment():
+    """驗證必要的環境變數"""
+    missing_vars = []
+    for var in REQUIRED_ENV_VARS:
+        if not os.environ.get(var):
+            missing_vars.append(var)
+    
+    if missing_vars:
+        logging.error(f"Missing required environment variables: {', '.join(missing_vars)}")
+        raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
+
+# Validate environment on startup
+try:
+    validate_environment()
+    logging.info("Environment variables validation passed")
+except ValueError as e:
+    logging.error(f"Environment validation failed: {e}")
+    # In production, you might want to exit here
+    # raise e
+# --- >> END PRODUCTION SECURITY << ---
+
 # --- >> SMART 設定 (從環境變數讀取) << ---
 SMART_CLIENT_ID = os.getenv('SMART_CLIENT_ID')
 SMART_CLIENT_SECRET = os.getenv('SMART_CLIENT_SECRET') # Public client 可能不需要
@@ -124,6 +154,36 @@ except Exception as e:
 
 app = Flask(__name__, template_folder='templates')
 
+# --- >> PRODUCTION SECURITY: Enhanced Security Configuration << ---
+def configure_production_security(app):
+    """配置生產環境安全設定"""
+    from datetime import timedelta
+    
+    # 基本安全配置
+    app.config.update(
+        SESSION_COOKIE_SECURE=True if not app.debug else False,  # Only HTTPS in production
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SAMESITE='None' if not app.debug else 'Lax',  # Oracle Health iframe compatibility
+        PERMANENT_SESSION_LIFETIME=timedelta(hours=8),
+        MAX_CONTENT_LENGTH=16 * 1024 * 1024,  # 16MB max file size
+    )
+    
+    # Oracle Health specific session configuration
+    if not app.debug:
+        # In production, configure for Oracle Health iframe embedding
+        app.config['SESSION_COOKIE_SECURE'] = True  # Required for SameSite=None
+        app.config['SESSION_COOKIE_SAMESITE'] = 'None'  # Allow cross-site iframe embedding
+    
+    # HTTPS 強制執行 (僅在生產環境)
+    @app.before_request
+    def force_https():
+        if not app.debug and not request.is_secure and request.headers.get('X-Forwarded-Proto') != 'https':
+            return redirect(request.url.replace('http://', 'https://'), code=301)
+
+# Apply security configuration
+configure_production_security(app)
+# --- >> END PRODUCTION SECURITY << ---
+
 # --- Specific CORS configuration ---
 # Allow all origins for general routes (like SMART launch, callback, UI)
 CORS(app, resources={r"/*": {"origins": "*"}})
@@ -155,16 +215,44 @@ if not app.secret_key:
     app.logger.warning("FLASK_SECRET_KEY not set in environment. Generated a temporary one. SET THIS IN PRODUCTION!")
     # raise ValueError("No FLASK_SECRET_KEY set.")
 
-# --- NEW: Add Security Headers --- (Inspired by Cerner tutorial)
+# --- >> PRODUCTION SECURITY: Enhanced Security Headers << ---
 @app.after_request
 def add_security_headers(response):
-    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
-    # response.headers['Content-Security-Policy'] = "default-src 'self'" # Example, adjust as needed
-    # response.headers['X-Content-Type-Options'] = 'nosniff'
-    # response.headers['X-XSS-Protection'] = '1; mode=block'
+    """Add security headers to all responses"""
+    # 安全標頭
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'  # Allow embedding in same origin
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    
+    # CSP 設定 - 允許必要的外部資源
+    csp_policy = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' "
+        "https://code.jquery.com https://cdn.jsdelivr.net https://stackpath.bootstrapcdn.com "
+        "https://cdnjs.cloudflare.com https://sandbox.cds-hooks.org; "
+        "style-src 'self' 'unsafe-inline' "
+        "https://stackpath.bootstrapcdn.com https://cdnjs.cloudflare.com; "
+        "img-src 'self' data: https:; "
+        "font-src 'self' https://cdnjs.cloudflare.com; "
+        "connect-src 'self' https: wss:; "
+        "frame-ancestors 'self' https://*.cerner.com https://*.oracle.com; "
+        "base-uri 'self'; "
+        "form-action 'self'; "
+        "manifest-src 'self';"
+    )
+    response.headers['Content-Security-Policy'] = csp_policy
+    
+    # Oracle Health/Cerner iframe compatibility
+    # P3P header for IE cookie compatibility in iframes
+    response.headers['P3P'] = 'CP="NOI ADM DEV PSAi COM NAV OUR OTRo STP IND DEM"'
+    
+    # For Edge: Set SameSite=None; Secure for cookies in iframe context
+    # This is handled in session cookie configuration
+    
     return response
-# --- END NEW: Add Security Headers ---
-
+# --- >> END PRODUCTION SECURITY: Enhanced Security Headers << ---
 
 # --- Flask-Login Configuration ---
 login_manager = LoginManager()
@@ -200,6 +288,44 @@ def load_user(user_id):
     return None # User not found in session
 # --- End User Model ---
 
+# --- >> PRODUCTION SECURITY: Health Check and Monitoring << ---
+@app.route('/health')
+def health_check():
+    """健康檢查端點"""
+    try:
+        import time
+        health_data = {
+            'status': 'healthy',
+            'timestamp': time.time(),
+            'version': os.environ.get('APP_VERSION', 'unknown'),
+            'environment': 'production' if not app.debug else 'development'
+        }
+        
+        # 檢查關鍵配置
+        config_checks = {
+            'flask_secret_key': bool(app.secret_key),
+            'smart_client_id': bool(SMART_CLIENT_ID),
+            'smart_redirect_uri': bool(SMART_REDIRECT_URI),
+            'cdss_config_loaded': bool(cdss_config)
+        }
+        
+        health_data['config_checks'] = config_checks
+        
+        # 如果關鍵配置缺失，返回 degraded 狀態
+        if not all(config_checks.values()):
+            health_data['status'] = 'degraded'
+            return jsonify(health_data), 503
+        
+        return jsonify(health_data), 200
+        
+    except Exception as e:
+        app.logger.error(f"Health check failed: {e}")
+        return jsonify({
+            'status': 'unhealthy',
+            'error': str(e),
+            'timestamp': time.time()
+        }), 503
+# --- >> END PRODUCTION SECURITY << ---
 
 # --- >> NEW: ValueSet Helper Functions << ---
 def _fetch_and_expand_valueset(valueset_url_or_id, fhir_server_url, headers):

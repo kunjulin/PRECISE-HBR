@@ -2,6 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ title }} - SMART FHIR App</title>
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
@@ -35,7 +36,45 @@
         .badge {
             border-radius: 15px;
         }
+        
+        /* Oracle Health PowerChart Embedded Styles */
+        body.embedded-powerchart {
+            padding-top: 1rem;
+            margin: 0;
+        }
+        
+        body.embedded-powerchart .navbar {
+            display: none; /* Hide navbar in embedded mode */
+        }
+        
+        body.embedded-powerchart main.container,
+        body.embedded-powerchart main.container-fluid {
+            margin-top: 0;
+            border-radius: 0;
+            box-shadow: none;
+            padding: 1rem;
+            height: calc(100vh - 2rem);
+            overflow-y: auto;
+        }
+        
+        /* Responsive design for various screen sizes */
+        @media (max-width: 768px) {
+            main.container, main.container-fluid {
+                padding: 1rem;
+                margin: 0.5rem;
+            }
+        }
+        
+        /* IE specific fixes */
+        @media screen and (-ms-high-contrast: active), (-ms-high-contrast: none) {
+            .btn {
+                border-radius: 4px; /* Less rounded corners for IE */
+            }
+        }
     </style>
+    
+    <!-- Oracle Health PowerChart Embedding Detection -->
+    <script src="{{ url_for('static', filename='smart_embed_detection.js') }}"></script>
 </head>
 <body>
     <nav class="navbar navbar-expand-md navbar-dark bg-dark fixed-top shadow">
