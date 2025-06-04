@@ -40,8 +40,8 @@ except ImportError as e:
 # Import optimization functions
 try:
     import fhirclient_optimizations
-    OPTIMIZATIONS_AVAILABLE = True
-    logging.info("fhirclient optimizations module imported successfully")
+    OPTIMIZATIONS_AVAILABLE = False  # EMERGENCY DISABLE - Force manual mode only
+    logging.info("fhirclient optimizations module imported but DISABLED for stability")
 except ImportError as e:
     OPTIMIZATIONS_AVAILABLE = False
     logging.warning(f"fhirclient optimizations not available: {e}")
@@ -282,7 +282,7 @@ def add_security_headers(response):
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'index' # Redirect to landing page if login required
-login_manager.login_message = "請登入以存取此頁面。如果這是 SMART on FHIR 應用程式，請透過您的 EHR 系統啟動。"
+login_manager.login_message = "Please log in to access this page. If this is a SMART on FHIR application, please launch through your EHR system."
 login_manager.login_message_category = "warning"
 
 # --- Authlib Configuration ---
@@ -2502,10 +2502,24 @@ def calculate_risk_ui_page():
 
     app.logger.info(f"Initiating bleeding risk calculation for UI display for patient: {patient_id}")
 
-    # 1. Fetch Patient Demographics (for age/sex)
-    patient_resource = get_patient_data() 
+    # 1. Fetch Patient Demographics (EMERGENCY MODE: Manual Only)
+    app.logger.info("🚨 EMERGENCY MODE: Using manual patient data retrieval only")
+    
+    patient_resource = None
     age = None
     sex = "unknown"
+    
+    # Simple manual patient data retrieval
+    try:
+        patient_resource = get_patient_data()
+        if patient_resource:
+            app.logger.info(f"Patient resource fetched manually: {patient_resource.get('id')}")
+        else:
+            app.logger.warning("No patient resource returned from manual fetch")
+    except Exception as e:
+        app.logger.error(f"Error in manual patient data retrieval: {e}")
+        patient_resource = None
+    
     if patient_resource:
         birth_date = patient_resource.get("birthDate")
         age = calculate_age(birth_date) if birth_date else None
@@ -2514,32 +2528,31 @@ def calculate_risk_ui_page():
     else:
         flash(f"Unable to retrieve basic information for patient {patient_id}. Calculation may be incomplete.", "danger")
 
-    # 2. Fetch Lab Values and eGFR (Phase 1 Optimization)
-    if OPTIMIZATIONS_AVAILABLE:
-        try:
-            app.logger.info("Using optimized lab value retrieval")
-            hb_value = fhirclient_optimizations.get_hemoglobin_optimized(
-                patient_id, LOINC_CODES["HEMOGLOBIN"], SMART_CLIENT_ID, get_hemoglobin
-            )
-            platelet_value = fhirclient_optimizations.get_platelet_optimized(
-                patient_id, LOINC_CODES["PLATELET"], SMART_CLIENT_ID, get_platelet
-            )
-            egfr_value = fhirclient_optimizations.get_egfr_value_optimized(
-                patient_id, age, sex, LOINC_CODES["CREATININE"], LOINC_CODES["EGFR_DIRECT"], 
-                SMART_CLIENT_ID, get_egfr_value
-            )
-        except Exception as e:
-            app.logger.error(f"Error in optimized lab value retrieval: {e}")
-            app.logger.info("Falling back to manual lab value retrieval")
-            hb_value = get_hemoglobin(patient_id)
-            platelet_value = get_platelet(patient_id)
-            egfr_value = get_egfr_value(patient_id, age, sex)
-    else:
-        app.logger.info("Using manual lab value retrieval")
-        hb_value = get_hemoglobin(patient_id)
-        platelet_value = get_platelet(patient_id)
-        egfr_value = get_egfr_value(patient_id, age, sex) 
+    # 2. Fetch Lab Values (EMERGENCY MODE: Manual Only)
+    app.logger.info("🚨 EMERGENCY MODE: Using manual lab value retrieval only")
     
+    # Simple manual lab value retrieval - no optimizations
+    try:
+        app.logger.info("Fetching hemoglobin...")
+        hb_value = get_hemoglobin(patient_id)
+    except Exception as e:
+        app.logger.error(f"Error getting hemoglobin: {e}")
+        hb_value = None
+    
+    try:
+        app.logger.info("Fetching platelet...")
+        platelet_value = get_platelet(patient_id)
+    except Exception as e:
+        app.logger.error(f"Error getting platelet: {e}")
+        platelet_value = None
+    
+    try:
+        app.logger.info("Fetching eGFR...")
+        egfr_value = get_egfr_value(patient_id, age, sex)
+    except Exception as e:
+        app.logger.error(f"Error getting eGFR: {e}")
+        egfr_value = None
+
     app.logger.info(f"Patient {patient_id} Labs: Hb={hb_value}, Platelet={platelet_value}, eGFR={egfr_value}")
 
     # 3. Get Condition, Medication, and Blood Transfusion Points AND DETAILS
@@ -2580,6 +2593,14 @@ def calculate_risk_ui_page():
         flash("Error occurred while calculating bleeding risk.", "danger")
         bleeding_risk_result = {}
 
+    # Log performance metrics if available (Phase 2)
+    if OPTIMIZATIONS_AVAILABLE and hasattr(fhirclient_optimizations, 'get_performance_summary'):
+        try:
+            perf_summary = fhirclient_optimizations.get_performance_summary()
+            app.logger.info(f"Performance metrics: {perf_summary}")
+        except Exception as e:
+            app.logger.warning(f"Could not retrieve performance metrics: {e}")
+
     # Prepare data for template
     calculation_details = {
         'age': age,
@@ -2596,7 +2617,8 @@ def calculate_risk_ui_page():
         'risk_params': RISK_PARAMS_CONFIG, 
         'score': bleeding_risk_result.get('score'),
         'category': bleeding_risk_result.get('category'),
-        'score_details': bleeding_risk_result.get('details', {})
+        'score_details': bleeding_risk_result.get('details', {}),
+        'optimization_used': 'Manual (Emergency Mode)'  # Fixed optimization info
     }
 
     # Get the actual label used for high risk from config to pass to template
@@ -2610,6 +2632,94 @@ def calculate_risk_ui_page():
                            calculation_details=calculation_details,
                            high_risk_label_for_template=actual_high_risk_label) # Pass the label
 # --- END UI Route ---
+
+# --- Import Performance Optimizer ---
+try:
+    from fhir_performance_optimizer import (
+        global_optimizer, track_performance, get_performance_stats, cleanup_cache,
+        FHIRPerformanceOptimizer
+    )
+    PERFORMANCE_OPTIMIZER_AVAILABLE = True
+    app.logger.info("FHIR Performance Optimizer successfully imported")
+except ImportError as e:
+    PERFORMANCE_OPTIMIZER_AVAILABLE = False
+    app.logger.warning(f"FHIR Performance Optimizer not available: {e}")
+# --- End Performance Optimizer Import ---
+
+# --- >> NEW: Performance monitoring routes << ---
+@app.route('/performance')
+@login_required
+def performance_dashboard():
+    """性能監控儀表板"""
+    if not PERFORMANCE_OPTIMIZER_AVAILABLE:
+        flash("性能監控模塊未啟用", "warning")
+        return redirect(url_for('main_app_page'))
+    
+    stats = get_performance_stats()
+    return render_template('performance_dashboard.html', 
+                           title="性能監控儀表板", 
+                           stats=stats)
+
+@app.route('/api/performance-stats')
+@login_required
+def api_performance_stats():
+    """API: 獲取性能統計數據"""
+    if not PERFORMANCE_OPTIMIZER_AVAILABLE:
+        return jsonify({"error": "Performance optimizer not available"}), 503
+    
+    stats = get_performance_stats()
+    return jsonify(stats)
+
+@app.route('/api/clear-cache', methods=['POST'])
+@login_required
+def api_clear_cache():
+    """API: 清理緩存"""
+    if not PERFORMANCE_OPTIMIZER_AVAILABLE:
+        return jsonify({"error": "Performance optimizer not available"}), 503
+    
+    try:
+        cleared_count = cleanup_cache()
+        app.logger.info(f"Cache cleared by user {current_user.id}, {cleared_count} entries removed")
+        return jsonify({
+            "success": True,
+            "cleared_count": cleared_count,
+            "message": f"Successfully cleared {cleared_count} cache entries"
+        })
+    except Exception as e:
+        app.logger.error(f"Error clearing cache: {e}")
+        return jsonify({"error": str(e)}), 500
+
+# --- NEW: Optimized FHIR helper functions ---
+if PERFORMANCE_OPTIMIZER_AVAILABLE:
+    
+    @track_performance("get_patient_data_optimized", "Patient")
+    def get_patient_data_optimized():
+        """優化的病患數據獲取函數"""
+        return get_patient_data()
+    
+    @track_performance("get_observation_optimized", "Observation")
+    def get_observation_optimized(patient_id, loinc_code):
+        """優化的觀察值獲取函數"""
+        return get_observation(patient_id, loinc_code)
+    
+    @track_performance("get_comprehensive_patient_data", "Patient")
+    def get_comprehensive_patient_data_optimized(patient_id):
+        """使用批量處理獲取完整病患數據"""
+        fhir_server = _get_fhir_server_url()
+        headers = _get_fhir_request_headers()
+        
+        if not fhir_server or not headers:
+            app.logger.error("Cannot get comprehensive patient data: missing FHIR server or headers")
+            return None
+        
+        return global_optimizer.get_comprehensive_patient_data(fhir_server, headers, patient_id)
+    
+    @track_performance("calculate_bleeding_risk_optimized", "Risk")
+    def calculate_bleeding_risk_optimized(**kwargs):
+        """優化的出血風險計算"""
+        return calculate_bleeding_risk(**kwargs)
+
+# --- Modified: Enhanced calculate_risk_ui_page with performance optimization ---
 
 # --- Main Execution ---
 if __name__ == "__main__":
