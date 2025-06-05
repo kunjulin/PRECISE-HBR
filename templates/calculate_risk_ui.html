@@ -19,7 +19,7 @@
                     </div>
                 </div>
 
-                {% if calculation_details and calculation_details.category %}
+    {% if calculation_details and calculation_details.category %}
                     <!-- Risk Category Alert -->
                     <div class="alert alert-{% if calculation_details.category == high_risk_label_for_template %}danger{% elif calculation_details.category == 'medium' %}warning{% else %}info{% endif %} shadow-sm" role="alert">
                         <div class="d-flex align-items-center">
@@ -134,7 +134,7 @@
                                     </table>
                                 </div>
                             </div>
-                        </div>
+        </div>
 
                         <!-- Right Column: Risk Factor Points -->
                         <div class="col-lg-6 mb-4">
@@ -146,7 +146,7 @@
                                 </div>
                                 <div class="card-body">
                                     <table class="table table-borderless">
-                                        <tbody>
+            <tbody>
                                             <tr>
                                                 <th class="w-60">Age Component:</th>
                                                 <td class="text-right">
@@ -211,8 +211,8 @@
                                                     </span>
                                                 </td>
                                             </tr>
-                                        </tbody>
-                                    </table>
+            </tbody>
+        </table>
                                 </div>
                             </div>
                         </div>
@@ -250,11 +250,11 @@
                                                 </p>
                                             </div>
                                         </div>
-                                    {% endfor %}
+            {% endfor %}
                                 </div>
                             </div>
                         </div>
-                    {% endif %}
+        {% endif %}
 
                     <!-- Matched Medications Section -->
                     {% if calculation_details.matched_medications %}
@@ -290,11 +290,11 @@
                                                 </p>
                                             </div>
                                         </div>
-                                    {% endfor %}
+            {% endfor %}
                                 </div>
                             </div>
                         </div>
-                    {% endif %}
+        {% endif %}
 
                     <!-- Blood Transfusion Section -->
                     {% if calculation_details.matched_transfusions %}
@@ -322,14 +322,14 @@
                                                 </p>
                                             </div>
                                         </div>
-                                    {% endfor %}
+            {% endfor %}
                                 </div>
                             </div>
                         </div>
-                    {% endif %}
+        {% endif %}
 
                     <!-- High Risk Guideline Section -->
-                    {% if calculation_details.category == high_risk_label_for_template %}
+        {% if calculation_details.category == high_risk_label_for_template %}
                         <div class="card shadow-sm mb-4 border-danger">
                             <div class="card-header bg-danger text-white">
                                 <h5 class="mb-0">
@@ -364,8 +364,8 @@
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    {% endif %}
+            </div>
+        {% endif %}
 
                     <!-- Technical Details (Collapsible) -->
                     <div class="card shadow-sm">
@@ -389,7 +389,7 @@
                         </div>
                     </div>
 
-                {% else %}
+    {% else %}
                     <!-- Error State -->
                     <div class="alert alert-danger shadow-sm" role="alert">
                         <div class="d-flex align-items-center">
@@ -399,8 +399,8 @@
                                 <p class="mb-0">Please check if the data is complete or try again later.</p>
                             </div>
                         </div>
-                    </div>
-                {% endif %}
+        </div>
+    {% endif %}
 
                 <!-- Action Buttons -->
                 <div class="d-flex justify-content-between mt-4">

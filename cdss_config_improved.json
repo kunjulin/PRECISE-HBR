@@ -109,12 +109,6 @@
             ["http://snomed.info/sct", "13569004"],
             ["http://snomed.info/sct", "33389009"],
             ["http://snomed.info/sct", "180208006"]
-        ],
-        "major_surgery": [
-            ["http://snomed.info/sct", "387713003"],
-            ["http://snomed.info/sct", "274025005"],
-            ["http://snomed.info/sct", "363679005"],
-            ["http://snomed.info/sct", "112802009"]
         ]
     },
     "condition_rules": {
