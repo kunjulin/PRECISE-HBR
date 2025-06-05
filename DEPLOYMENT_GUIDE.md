@@ -346,4 +346,260 @@ curl https://yourdomain.com/health
 
 ---
 
-**注意**：此指南提供了基本的部署框架。根據您的具體環境和需求，可能需要額外的配置和安全措施。建議在部署前進行充分的測試，並諮詢資訊安全專家。 
+**注意**：此指南提供了基本的部署框架。根據您的具體環境和需求，可能需要額外的配置和安全措施。建議在部署前進行充分的測試，並諮詢資訊安全專家。
+
+# Google App Engine 部署指南
+
+## 🚨 **緊急修復 - GAE 部署錯誤解決方案**
+
+如果您遇到 Flask 應用程式錯誤，請確認以下修復已經完成：
+
+### 修復 1: 移除動態模板創建代碼
+- ✅ 已移除 `APP.py` 中的動態模板創建代碼
+- ✅ 修正了 `if __name__ == '__main__':` 條件
+
+### 修復 2: CORS 配置衝突解決
+- ✅ 修復了多重 CORS 配置衝突
+- ✅ 簡化 CORS 設定以避免錯誤
+- ✅ 添加 CORS 錯誤處理機制
+
+### 修復 3: GAE 環境安全配置
+- ✅ 修正 GAE 環境下的會話 cookie 設定
+- ✅ 停用不必要的 HTTPS 強制重導向
+- ✅ 優化 GAE 特定的安全配置
+
+### 修復 4: 正確的 app.yaml 配置
+```yaml
+service: smart-calc
+runtime: python311
+entrypoint: gunicorn -b :$PORT APP:app
+
+env_variables:
+  SMART_CLIENT_ID: "aluminum001@gmail.com"
+  SMART_REDIRECT_URI: "https://smart-calc-dot-fhir0730.df.r.appspot.com/callback"
+  SMART_SCOPES: "launch/patient openid fhirUser profile email patient/Patient.read patient/Observation.read patient/Condition.read patient/MedicationRequest.read patient/Procedure.read online_access"
+  FLASK_SECRET_KEY: "your-escaped-secret-key"
+  APP_BASE_URL: "https://smart-calc-dot-fhir0730.df.r.appspot.com"
+```
+
+### 修復 3: 確保必要檔案存在
+```bash
+# 確認檔案存在
+ls -la APP.py app.yaml requirements.txt cdss_config.json
+ls -la templates/
+```
+
+### 立即部署命令
+```bash
+gcloud app deploy app.yaml --include-files cdss_config.json
+```
+
+---
+
+## 🚀 **部署前檢查清單**
+
+### 1. **必要文件確認**
+確保以下文件存在於您的專案根目錄：
+```
+smart_fhir_app/
+├── APP.py                    # 主應用程式檔案
+├── app.yaml                  # GAE 配置檔案
+├── requirements.txt          # Python 依賴套件
+├── cdss_config.json         # CDSS 配置檔案 (關鍵!)
+├── templates/               # HTML 模板目錄
+│   ├── layout.html
+│   ├── main_app.html
+│   ├── error.html
+│   └── ...
+└── static/                  # 靜態檔案目錄
+    └── ...
+```
+
+### 2. **環境變數設定**
+在 `app.yaml` 中更新以下環境變數：
+
+```yaml
+env_variables:
+  FLASK_SECRET_KEY: "YOUR_SECURE_SECRET_KEY_HERE"
+  SMART_CLIENT_ID: "your-registered-client-id"
+  SMART_REDIRECT_URI: "https://your-project-id.appspot.com/callback"
+  SMART_SCOPES: "launch/patient openid fhirUser profile email patient/Patient.read patient/Observation.read patient/Condition.read patient/MedicationRequest.read online_access"
+```
+
+⚠️ **重要**: 將 `your-project-id` 替換為您的實際 GAE 專案 ID。
+
+### 3. **CDSS 配置檔案**
+確保 `cdss_config.json` 檔案存在且格式正確。如果檔案遺失，應用程式會使用 fallback 配置，但功能會受限。
+
+## 📦 **部署步驟**
+
+### 步驟 1: 安裝 Google Cloud SDK
+```bash
+# 下載並安裝 Google Cloud SDK
+# https://cloud.google.com/sdk/docs/install
+```
+
+### 步驟 2: 認證和設定專案
+```bash
+# 登入 Google Cloud
+gcloud auth login
+
+# 設定專案 ID
+gcloud config set project YOUR_PROJECT_ID
+
+# 確認專案設定
+gcloud config list
+```
+
+### 步驟 3: 確認檔案完整性
+```bash
+# 檢查關鍵檔案是否存在
+ls -la cdss_config.json app.yaml requirements.txt APP.py
+
+# 驗證 JSON 格式
+python -m json.tool cdss_config.json > /dev/null && echo "JSON 格式正確" || echo "JSON 格式錯誤"
+```
+
+### 步驟 4: 部署應用程式
+```bash
+# 部署到 GAE
+gcloud app deploy app.yaml
+
+# 查看部署狀態
+gcloud app browse
+```
+
+## 🔍 **部署後驗證**
+
+### 1. **健康檢查**
+訪問您的健康檢查端點：
+```
+https://YOUR_PROJECT_ID.appspot.com/health
+```
+
+期望的回應：
+```json
+{
+  "status": "healthy",
+  "config": {
+    "status": "loaded",
+    "loaded_successfully": true,
+    "has_minimal_config": true
+  }
+}
+```
+
+### 2. **功能測試**
+- 測試 SMART 授權流程
+- 驗證 CDS Hooks 端點
+- 檢查風險計算功能
+
+## ❌ **常見問題與解決方案**
+
+### 問題 1: "CDSS configuration file not found"
+**原因**: `cdss_config.json` 未包含在部署中
+
+**解決方案**:
+1. 確認 `cdss_config.json` 在專案根目錄
+2. 檢查 `app.yaml` 中的 `includes` 設定
+3. 重新部署：`gcloud app deploy --include-files cdss_config.json`
+
+### 問題 2: "Invalid JSON in configuration file"
+**原因**: JSON 格式錯誤
+
+**解決方案**:
+```bash
+# 驗證 JSON 格式
+python -m json.tool cdss_config.json
+
+# 修復格式錯誤後重新部署
+```
+
+### 問題 3: 授權錯誤
+**原因**: SMART 設定不正確
+
+**解決方案**:
+1. 確認 `SMART_REDIRECT_URI` 指向正確的 GAE URL
+2. 在 EHR 系統中註冊正確的 redirect URI
+3. 檢查 `SMART_CLIENT_ID` 是否正確
+
+### 問題 4: 記憶體或效能問題
+**解決方案**:
+1. 在 `app.yaml` 中調整 `instance_class`：
+```yaml
+instance_class: F4  # 更高的記憶體和 CPU
+```
+
+2. 調整自動縮放設定：
+```yaml
+automatic_scaling:
+  min_instances: 1  # 保持至少一個實例運行
+  max_instances: 20
+```
+
+## 📊 **監控和日誌**
+
+### 查看應用程式日誌
+```bash
+# 即時日誌
+gcloud app logs tail -s default
+
+# 查看特定時間範圍的日誌
+gcloud app logs read --limit=50
+```
+
+### 監控儀表板
+訪問 Google Cloud Console:
+- **App Engine > 儀表板**: 查看流量和效能
+- **Logging > 日誌瀏覽器**: 詳細日誌分析
+- **Error Reporting**: 錯誤追蹤
+
+## 🔄 **更新部署**
+
+### 更新應用程式碼
+```bash
+# 部署新版本
+gcloud app deploy app.yaml
+
+# 查看部署歷史
+gcloud app versions list
+
+# 切換流量到新版本（如果使用版本管理）
+gcloud app services set-traffic default --splits=NEW_VERSION=1
+```
+
+### 更新 CDSS 配置
+```bash
+# 只更新配置檔案
+gcloud app deploy app.yaml --include-files cdss_config.json
+```
+
+## 🆘 **緊急回復**
+
+如果新部署出現問題：
+
+```bash
+# 查看可用版本
+gcloud app versions list
+
+# 回復到上一個版本
+gcloud app services set-traffic default --splits=PREVIOUS_VERSION=1
+
+# 刪除有問題的版本
+gcloud app versions delete PROBLEMATIC_VERSION
+```
+
+## 📞 **技術支援**
+
+如果遇到無法解決的問題：
+
+1. 檢查 GAE 日誌中的詳細錯誤訊息
+2. 確認所有環境變數設定正確
+3. 驗證 `cdss_config.json` 格式和內容
+4. 檢查 EHR 系統中的應用程式註冊設定
+
+部署成功後，您的 SMART FHIR 應用程式應該能夠：
+- ✅ 處理 SMART 授權流程
+- ✅ 提供 CDS Hooks 服務
+- ✅ 計算出血風險評分
+- ✅ 在配置檔案缺失時使用 fallback 機制 

@@ -2,17 +2,21 @@ import os
 import json
 import math
 import datetime
+import datetime as dt_module  # Import the module separately to avoid conflicts
 import logging
 import hashlib # For PKCE
 import base64  # For PKCE
 from urllib.parse import urlencode, urljoin # Added urljoin
 import re # For PKCE code_verifier cleanup
 import time # For ValueSet caching
+import sys # Added sys import for flask version
+from datetime import datetime # Added for health check timestamps
 
 from dotenv import load_dotenv
-from flask import Flask, request, jsonify, url_for, redirect, session, render_template, flash
+from flask import Flask, request, jsonify, url_for, redirect, session, render_template, flash, make_response
 import requests
 from werkzeug.security import generate_password_hash, check_password_hash # Kept if needed elsewhere
+import flask # Added flask import for flask version
 
 # --- Authentication Imports ---
 from authlib.integrations.flask_client import OAuth
@@ -21,7 +25,7 @@ import jwt # For ID Token validation
 from jwt import PyJWKClient # For ID Token validation
 # --- End Authentication Imports ---
 
-from flask_cors import CORS
+# from flask_cors import CORS  # Removed to avoid conflicts
 
 # --- SMART on FHIR Client (Phase 1 Optimization) ---
 try:
@@ -94,12 +98,12 @@ if raw_redirect_uri:
         SMART_REDIRECT_URI = SMART_REDIRECT_URI.split()[0]
     logging.info(f"SMART_REDIRECT_URI from os.getenv, cleaned: '{SMART_REDIRECT_URI}'")
 else:
-    SMART_REDIRECT_URI = "http://127.0.0.1:8080/callback"
+    SMART_REDIRECT_URI = "https://smart-calc-dot-fhir0730.df.r.appspot.com/callback"
     logging.info(f"SMART_REDIRECT_URI not in os.getenv, using default: '{SMART_REDIRECT_URI}'")
 # --- END MODIFIED ---
 
 # --- >> 結束 SMART 設定 << ---
-APP_BASE_URL = os.getenv('APP_BASE_URL', 'http://127.0.0.1:8080') # 本地開發預設值
+APP_BASE_URL = os.getenv('APP_BASE_URL', 'https://smart-calc-dot-fhir0730.df.r.appspot.com/') # 本地開發預設值
 
 # --- >> NEW: LOINC Code Definitions << ---
 LOINC_CODES = {
@@ -172,66 +176,157 @@ def validate_and_optimize_scopes(requested_scopes, context='patient'):
 # --- Load External CDSS Configuration ---
 # Support custom config path for testing
 CONFIG_FILE = os.getenv('CDSS_CONFIG_PATH', os.path.join(os.path.dirname(__file__), "cdss_config.json"))
-try:
-    with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
-        cdss_config = json.load(f)
-    logging.basicConfig(level=logging.INFO) # Set basic logging before app logger is ready
-    logging.info(f"Loaded CDSS configuration version {cdss_config.get('version', 'N/A')}")
 
+def load_cdss_config_safely():
+    """
+    Safely loads CDSS configuration with comprehensive error handling for GAE deployment.
+    Returns configuration dict and initialization status.
+    """
+    try:
+        # Check if file exists first
+        if not os.path.exists(CONFIG_FILE):
+            logging.warning(f"CDSS configuration file not found at {CONFIG_FILE}")
+            return create_minimal_config(), False
+            
+        # Check file size and readability
+        try:
+            file_size = os.path.getsize(CONFIG_FILE)
+            if file_size == 0:
+                logging.warning(f"CDSS configuration file is empty at {CONFIG_FILE}")
+                return create_minimal_config(), False
+        except OSError as e:
+            logging.warning(f"Cannot access CDSS configuration file stats: {e}")
+            return create_minimal_config(), False
+        
+        # Attempt to load the configuration
+        with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+            content = f.read().strip()
+            if not content:
+                logging.warning(f"CDSS configuration file is empty: {CONFIG_FILE}")
+                return create_minimal_config(), False
+                
+            cdss_config = json.loads(content)
+            
+        # Validate basic structure
+        if not isinstance(cdss_config, dict):
+            logging.error(f"CDSS configuration must be a JSON object, got {type(cdss_config)}")
+            return create_minimal_config(), False
+            
+        logging.info(f"Successfully loaded CDSS configuration version {cdss_config.get('version', 'N/A')} from {CONFIG_FILE}")
+        return cdss_config, True
+        
+    except json.JSONDecodeError as e:
+        logging.error(f"Invalid JSON in CDSS configuration file {CONFIG_FILE}: {e}")
+        return create_minimal_config(), False
+        
+    except FileNotFoundError:
+        logging.warning(f"CDSS configuration file not found: {CONFIG_FILE}")
+        return create_minimal_config(), False
+        
+    except PermissionError as e:
+        logging.error(f"Permission denied accessing CDSS configuration file {CONFIG_FILE}: {e}")
+        return create_minimal_config(), False
+        
+    except Exception as e:
+        logging.error(f"Unexpected error loading CDSS configuration from {CONFIG_FILE}: {e}", exc_info=True)
+        return create_minimal_config(), False
+
+def create_minimal_config():
+    """
+    Creates a minimal working CDSS configuration for fallback scenarios.
+    """
+    return {
+        "version": "fallback-1.0",
+        "description": "Minimal fallback configuration - limited functionality",
+        "medication_codings": {
+            "oac": [],
+            "nsaid_steroid": []
+        },
+        "condition_rules": {
+            "codes_score_2": [],
+            "prefix_rules": [],
+            "text_keywords_score_2": [],
+            "value_set_rules": [],
+            "local_valueset_rules": []
+        },
+        "local_valuesets": {},
+        "procedure_codings": {
+            "blood_transfusion": []
+        },
+        "risk_score_parameters": {
+            "age_threshold": 75,
+            "egfr_threshold": 30,
+            "hemoglobin_threshold_male": 130,
+            "hemoglobin_threshold_female": 120,
+            "platelet_threshold": 100
+        },
+        "final_risk_threshold": {
+            "high_risk_score": 3
+        }
+    }
+
+# Load configuration using the safe loader
+cdss_config, config_loaded_successfully = load_cdss_config_safely()
+
+if not config_loaded_successfully:
+    logging.warning("Using minimal fallback CDSS configuration. Some features may be limited.")
+
+try:
     # --- Convert loaded code lists back to sets of tuples/sets for efficient lookup ---
-    OAC_CODINGS_CONFIG = set(tuple(item) for item in cdss_config.get('medication_codings', {}).get('oac', []))
-    NSAID_STEROID_CODINGS_CONFIG = set(tuple(item) for item in cdss_config.get('medication_codings', {}).get('nsaid_steroid', []))
+    OAC_CODINGS_CONFIG = set(tuple(item) for item in cdss_config.get('medication_codings', {}).get('oac', []) if isinstance(item, list) and len(item) >= 2)
+    NSAID_STEROID_CODINGS_CONFIG = set(tuple(item) for item in cdss_config.get('medication_codings', {}).get('nsaid_steroid', []) if isinstance(item, list) and len(item) >= 2)
     CONDITION_CODES_SCORE_2_CONFIG = set(
         tuple(item) for item in cdss_config.get('condition_rules', {}).get('codes_score_2', [])
         if isinstance(item, list) and len(item) == 2
-    ) # Expects list of [system, code]
+    )
     CONDITION_PREFIX_RULES_CONFIG = cdss_config.get('condition_rules', {}).get('prefix_rules', [])
-    CONDITION_VALUESET_RULES_CONFIG = cdss_config.get('condition_rules', {}).get('value_set_rules', []) # <-- NEW
-    # --- NEW: Load Local ValueSet Rules and Definitions ---
+    CONDITION_VALUESET_RULES_CONFIG = cdss_config.get('condition_rules', {}).get('value_set_rules', [])
+    
+    # --- Load Local ValueSet Rules and Definitions ---
     CONDITION_LOCAL_VALUESET_RULES_CONFIG = cdss_config.get('condition_rules', {}).get('local_valueset_rules', [])
-    LOCAL_VALUESETS_CONFIG = {
-        key: set(tuple(item) for item in value)
-        for key, value in cdss_config.get('local_valuesets', {}).items()
-    }
-    # --- END NEW ---
+    LOCAL_VALUESETS_CONFIG = {}
+    
+    # Safely process local valuesets
+    local_valuesets_raw = cdss_config.get('local_valuesets', {})
+    if isinstance(local_valuesets_raw, dict):
+        for key, value in local_valuesets_raw.items():
+            if isinstance(value, list):
+                LOCAL_VALUESETS_CONFIG[key] = set(tuple(item) for item in value if isinstance(item, list) and len(item) >= 2)
+    
     RISK_PARAMS_CONFIG = cdss_config.get('risk_score_parameters', {})
     FINAL_RISK_THRESHOLD_CONFIG = cdss_config.get('final_risk_threshold', {})
-    BLOOD_TRANSFUSION_CODES_CONFIG = set(tuple(item) for item in cdss_config.get('procedure_codings', {}).get('blood_transfusion', []) if isinstance(item, list) and len(item) == 2) # MODIFIED
+    BLOOD_TRANSFUSION_CODES_CONFIG = set(
+        tuple(item) for item in cdss_config.get('procedure_codings', {}).get('blood_transfusion', [])
+        if isinstance(item, list) and len(item) == 2
+    )
 
-    # --- MODIFIED: Load Keywords for Condition Text Analysis (Score 2) from Config ---
-    # Load the list from JSON, provide an empty list as default if keys are missing
+    # --- Load Keywords for Condition Text Analysis ---
     condition_text_keywords_list = cdss_config.get('condition_rules', {}).get('text_keywords_score_2', [])
-    # Convert the list to a set for efficient lookup
-    CONDITION_TEXT_KEYWORDS_SCORE_2_CONFIG = set(condition_text_keywords_list)
-    logging.info(f"Loaded {len(CONDITION_TEXT_KEYWORDS_SCORE_2_CONFIG)} keywords for condition text analysis from config.")
-    # --- END MODIFIED ---
-
-
-except FileNotFoundError:
-    logging.error(f"CRITICAL: CDSS configuration file not found at {CONFIG_FILE}")
-    # Create a minimal config if not found to allow app to start for auth testing
-    cdss_config = {}
-    OAC_CODINGS_CONFIG, NSAID_STEROID_CODINGS_CONFIG, CONDITION_CODES_SCORE_2_CONFIG, \
-    CONDITION_PREFIX_RULES_CONFIG, CONDITION_VALUESET_RULES_CONFIG, CONDITION_LOCAL_VALUESET_RULES_CONFIG, \
-    LOCAL_VALUESETS_CONFIG, RISK_PARAMS_CONFIG, FINAL_RISK_THRESHOLD_CONFIG, \
-    BLOOD_TRANSFUSION_CODES_CONFIG, CONDITION_TEXT_KEYWORDS_SCORE_2_CONFIG = [set() for _ in range(11)] # Adjusted count for new configs
-    # Ensure CONDITION_CODES_SCORE_2_CONFIG is initialized as a set even if file not found
-    CONDITION_CODES_SCORE_2_CONFIG = set() # Explicitly set for clarity if using the loop above
-    CONDITION_PREFIX_RULES_CONFIG = [] # it's a list
-    CONDITION_VALUESET_RULES_CONFIG = [] # <-- NEW: Initialize if config file not found
-    CONDITION_LOCAL_VALUESET_RULES_CONFIG = [] # <-- NEW: Initialize if config file not found
-    LOCAL_VALUESETS_CONFIG = {} # <-- NEW: Initialize if config file not found
+    CONDITION_TEXT_KEYWORDS_SCORE_2_CONFIG = set(condition_text_keywords_list) if isinstance(condition_text_keywords_list, list) else set()
+    
+    logging.info(f"CDSS Configuration Summary:")
+    logging.info(f"  - OAC codes: {len(OAC_CODINGS_CONFIG)}")
+    logging.info(f"  - NSAID/Steroid codes: {len(NSAID_STEROID_CODINGS_CONFIG)}")
+    logging.info(f"  - Condition codes (score 2): {len(CONDITION_CODES_SCORE_2_CONFIG)}")
+    logging.info(f"  - Text keywords: {len(CONDITION_TEXT_KEYWORDS_SCORE_2_CONFIG)}")
+    logging.info(f"  - Local valuesets: {len(LOCAL_VALUESETS_CONFIG)}")
+    
+except Exception as e:
+    logging.error(f"Error processing CDSS configuration data: {e}", exc_info=True)
+    # Fallback to empty configurations
+    OAC_CODINGS_CONFIG = set()
+    NSAID_STEROID_CODINGS_CONFIG = set()
+    CONDITION_CODES_SCORE_2_CONFIG = set()
+    CONDITION_PREFIX_RULES_CONFIG = []
+    CONDITION_VALUESET_RULES_CONFIG = []
+    CONDITION_LOCAL_VALUESET_RULES_CONFIG = []
+    LOCAL_VALUESETS_CONFIG = {}
     RISK_PARAMS_CONFIG = {}
     FINAL_RISK_THRESHOLD_CONFIG = {}
-    BLOOD_TRANSFUSION_CODES_CONFIG = set() # MODIFIED: Ensure it's a set if file not found
-    logging.warning(f"CDSS configuration file not found at {CONFIG_FILE}. Using empty config.")
-    # raise FileNotFoundError(f"CDSS configuration file not found: {CONFIG_FILE}") # Comment out to allow startup
-except json.JSONDecodeError as e:
-    logging.error(f"CRITICAL: Error decoding JSON from {CONFIG_FILE}: {e}")
-    raise ValueError(f"Invalid JSON in CDSS configuration file: {CONFIG_FILE}")
-except Exception as e:
-    logging.error(f"CRITICAL: Unexpected error loading CDSS config: {e}", exc_info=True)
-    raise
+    BLOOD_TRANSFUSION_CODES_CONFIG = set()
+    CONDITION_TEXT_KEYWORDS_SCORE_2_CONFIG = set()
+    logging.warning("Using empty CDSS configuration due to processing error.")
+
 # --- End Load External CDSS Configuration ---
 
 
@@ -242,44 +337,52 @@ def configure_production_security(app):
     """配置生產環境安全設定"""
     from datetime import timedelta
     
+    # 檢測是否在 GAE 環境
+    is_gae = os.getenv('GAE_ENV', '').startswith('standard')
+    
     # 基本安全配置
     app.config.update(
-        SESSION_COOKIE_SECURE=True if not app.debug else False,  # Only HTTPS in production
+        SESSION_COOKIE_SECURE=is_gae,  # GAE automatically handles HTTPS
         SESSION_COOKIE_HTTPONLY=True,
-        SESSION_COOKIE_SAMESITE='None' if not app.debug else 'Lax',  # Oracle Health iframe compatibility
+        SESSION_COOKIE_SAMESITE='Lax',  # Changed from 'None' to 'Lax' for better compatibility
         PERMANENT_SESSION_LIFETIME=timedelta(hours=8),
         MAX_CONTENT_LENGTH=16 * 1024 * 1024,  # 16MB max file size
     )
     
-    # Oracle Health specific session configuration
-    if not app.debug:
-        # In production, configure for Oracle Health iframe embedding
-        app.config['SESSION_COOKIE_SECURE'] = True  # Required for SameSite=None
-        app.config['SESSION_COOKIE_SAMESITE'] = 'None'  # Allow cross-site iframe embedding
+    # GAE specific configuration
+    if is_gae:
+        app.logger.info("Running in Google App Engine environment")
+        # GAE handles HTTPS termination at the load balancer level
+        # No need for additional HTTPS enforcement
+    else:
+        app.logger.info("Running in local/development environment")
     
-    # HTTPS 強制執行 (僅在生產環境)
+    # HTTPS 強制執行 (僅在非 GAE 生產環境)
     @app.before_request
     def force_https():
-        if not app.debug and not request.is_secure and request.headers.get('X-Forwarded-Proto') != 'https':
+        # Skip HTTPS enforcement in GAE as it's handled at the load balancer level
+        if not is_gae and not app.debug and not request.is_secure and request.headers.get('X-Forwarded-Proto') != 'https':
             return redirect(request.url.replace('http://', 'https://'), code=301)
 
 # Apply security configuration
 configure_production_security(app)
 # --- >> END PRODUCTION SECURITY << ---
 
-# --- Specific CORS configuration ---
-# Allow all origins for general routes (like SMART launch, callback, UI)
-CORS(app, resources={r"/*": {"origins": "*"}})
+# --- Simplified CORS configuration ---
+# Remove Flask-CORS to avoid conflicts and use manual headers instead
+cors_enabled = True
+app.logger.info("Using manual CORS configuration to avoid Flask-CORS conflicts")
 
-# More specific CORS for /cds-services/ to allow sandbox.cds-hooks.org
-CORS(app, resources={
-    r"/cds-services/*": {
-        "origins": "https://sandbox.cds-hooks.org", 
-        "methods": ["GET", "POST", "OPTIONS"], 
-        "allow_headers": ["Content-Type", "Authorization", "Accept", "X-Requested-With", "fhir-authorization"],
-        "supports_credentials": True
-    }
-})
+# Handle CORS preflight requests
+@app.before_request
+def handle_preflight():
+    if request.method == "OPTIONS":
+        response = make_response()
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        response.headers.add('Access-Control-Allow-Headers', "*")
+        response.headers.add('Access-Control-Allow-Methods', "*")
+        return response
+
 # --- End CORS configuration ---
 
 app.static_folder = 'static'
@@ -301,7 +404,13 @@ if not app.secret_key:
 # --- >> PRODUCTION SECURITY: Enhanced Security Headers << ---
 @app.after_request
 def add_security_headers(response):
-    """Add security headers to all responses"""
+    """Add security headers and CORS headers to all responses"""
+    # CORS Headers - Added first to avoid conflicts
+    if cors_enabled:
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,Accept,X-Requested-With,fhir-authorization'
+        response.headers['Access-Control-Allow-Methods'] = 'GET,POST,PUT,DELETE,OPTIONS'
+    
     # 安全標頭
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['X-Frame-Options'] = 'SAMEORIGIN'  # Allow embedding in same origin
@@ -374,39 +483,54 @@ def load_user(user_id):
 # --- >> PRODUCTION SECURITY: Health Check and Monitoring << ---
 @app.route('/health')
 def health_check():
-    """健康檢查端點"""
+    """
+    Enhanced health check endpoint for GAE with CDSS configuration status.
+    """
     try:
-        import time
+        # Basic Flask health
+        app_status = "healthy"
+        
+        # Check CDSS configuration status
+        config_status = "loaded" if config_loaded_successfully else "fallback"
+        config_items = {
+            "oac_codes": len(OAC_CODINGS_CONFIG),
+            "condition_codes": len(CONDITION_CODES_SCORE_2_CONFIG),
+            "text_keywords": len(CONDITION_TEXT_KEYWORDS_SCORE_2_CONFIG),
+            "local_valuesets": len(LOCAL_VALUESETS_CONFIG)
+        }
+        
+        # Check if we have minimal required configuration
+        has_minimal_config = bool(RISK_PARAMS_CONFIG and FINAL_RISK_THRESHOLD_CONFIG)
+        
         health_data = {
-            'status': 'healthy',
-            'timestamp': time.time(),
-            'version': os.environ.get('APP_VERSION', 'unknown'),
-            'environment': 'production' if not app.debug else 'development'
+            "status": "healthy",
+            "timestamp": datetime.utcnow().isoformat(),
+            "version": cdss_config.get('version', 'unknown'),
+            "config": {
+                "status": config_status,
+                "loaded_successfully": config_loaded_successfully,
+                "has_minimal_config": has_minimal_config,
+                "items": config_items,
+                "config_file": CONFIG_FILE
+            },
+            "environment": {
+                "debug": app.debug,
+                "python_version": sys.version,
+                "flask_version": flask.__version__
+            }
         }
         
-        # 檢查關鍵配置
-        config_checks = {
-            'flask_secret_key': bool(app.secret_key),
-            'smart_client_id': bool(SMART_CLIENT_ID),
-            'smart_redirect_uri': bool(SMART_REDIRECT_URI),
-            'cdss_config_loaded': bool(cdss_config)
-        }
+        # Return 200 for healthy, 503 for issues
+        status_code = 200 if has_minimal_config else 503
         
-        health_data['config_checks'] = config_checks
-        
-        # 如果關鍵配置缺失，返回 degraded 狀態
-        if not all(config_checks.values()):
-            health_data['status'] = 'degraded'
-            return jsonify(health_data), 503
-        
-        return jsonify(health_data), 200
+        return jsonify(health_data), status_code
         
     except Exception as e:
-        app.logger.error(f"Health check failed: {e}")
+        app.logger.error(f"Health check failed: {e}", exc_info=True)
         return jsonify({
-            'status': 'unhealthy',
-            'error': str(e),
-            'timestamp': time.time()
+            "status": "unhealthy",
+            "error": str(e),
+            "timestamp": datetime.utcnow().isoformat()
         }), 503
 # --- >> END PRODUCTION SECURITY << ---
 
@@ -1030,7 +1154,8 @@ def main_app_page():
                            title="FHIR ARC-HBR Bleeding Risk Calculator", 
                            current_user=current_user, 
                            patient_data=display_patient_data, # Pass the full resource or simplified dict
-                           patient_name_display=patient_name) # Pass the extracted patient name separately for easy use
+                           patient_name_display=patient_name, # Pass the extracted patient name separately for easy use
+                           dt_module=dt_module) # Explicitly pass dt_module
 
 
 @app.route('/logout')
@@ -1239,8 +1364,8 @@ def _get_fhir_server_url():
 # ... (calculate_age, get_human_name_text remain the same) ...
 def calculate_age(birth_date_str):
     try:
-        birth_date = datetime.datetime.strptime(birth_date_str, "%Y-%m-%d").date() # Use .date()
-        today = datetime.date.today() # Use date objects for comparison
+        birth_date = dt_module.datetime.strptime(birth_date_str, "%Y-%m-%d").date() # Use .date()
+        today = dt_module.date.today() # Use date objects for comparison
         age = today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day))
         return age
     except (ValueError, TypeError):
@@ -1437,7 +1562,7 @@ def get_condition_points(patient_id, codes_score_2, prefix_rules, text_keywords_
     if not fhir_server or not headers: return 0, []
     max_score = 0
     matched_conditions_details = []
-    today = datetime.date.today()
+    today = dt_module.date.today()
 
     url = f"{fhir_server}/Condition"
     params = {"patient": patient_id, "_count": 200}
@@ -1483,7 +1608,7 @@ def get_condition_points(patient_id, codes_score_2, prefix_rules, text_keywords_
                         if recorded_date_str:
                             try: 
                                 date_str_part = recorded_date_str.split('T')[0]
-                                if len(date_str_part) >= 10: parsed_date = datetime.datetime.strptime(date_str_part[:10], "%Y-%m-%d").date()
+                                if len(date_str_part) >= 10: parsed_date = dt_module.datetime.strptime(date_str_part[:10], "%Y-%m-%d").date()
                             except ValueError: pass
 
                         initial_max_score_for_condition = 0 # To track if this specific condition contributes anything new
@@ -1850,27 +1975,32 @@ def calculate_bleeding_risk(age, egfr_value, hemoglobin, sex, platelet, conditio
         total_score = base_score + condition_points + medication_points + blood_transfusion_points
         app.logger.info(f"Calculated total_score: {total_score}")
 
-        risk_category = 'low' # Default to low
-        # Read the high risk threshold from the specific key in config
-        # Default to a very high number if key is missing or not an int/float, to prevent accidental 'high' risk
+        # Define default labels, potentially overridden by config
+        default_low_label = 'low'
+        default_high_label = 'high'
+        # default_medium_label = 'medium' # If you add medium risk
+
+        # Get configured labels, falling back to defaults
+        low_risk_label = final_threshold.get('low_risk_label', default_low_label)
+        high_risk_label = final_threshold.get('high_risk_label', default_high_label)
+        # medium_risk_label = final_threshold.get('medium_risk_label', default_medium_label)
+
+
+        risk_category = low_risk_label # Default to configured low risk label
         threshold_high = final_threshold.get('high_risk_min_score') 
 
-        app.logger.info(f"Attempting to use High risk threshold from key 'high_risk_min_score': {threshold_high}")
+        app.logger.info(f"Attempting to use High risk threshold from key 'high_risk_min_score': {threshold_high}. Configured high risk label: '{high_risk_label}', low risk label: '{low_risk_label}'")
 
-        # Validate threshold_high before using it
         if not isinstance(threshold_high, (int, float)):
-            app.logger.warning(f"High risk threshold ('high_risk_min_score') is missing or not a number: {threshold_high}. Defaulting to effectively no high risk category for safety (scores will be low/medium).")
-            # Set to infinity or a very large number if you want to ensure nothing becomes 'high' by default error
-            # For now, if it's not a valid number, risk will remain 'low' or 'medium' if a medium threshold existed.
-            # Given current logic, without a valid threshold_high, risk will remain 'low'.
-            pass # Risk category will remain 'low' if threshold_high is not valid
+            app.logger.warning(f"High risk threshold ('high_risk_min_score') is missing or not a number: {threshold_high}. Category will default to low: '{low_risk_label}'.")
+            # Risk category remains low_risk_label
         elif total_score >= threshold_high:
-            risk_category = 'high'
+            risk_category = high_risk_label # Use configured high risk label
         
         # If you want to introduce a medium category, you would add a similar check here:
         # threshold_medium = final_threshold.get('medium_risk_min_score')
         # if isinstance(threshold_medium, (int, float)) and total_score >= threshold_medium and risk_category != 'high':
-        #     risk_category = 'medium'
+        #     risk_category = medium_risk_label # Use configured medium risk label
 
         app.logger.info(f"Final risk_category: {risk_category} for total_score: {total_score}")
         app.logger.info("--- Bleeding Risk Calculation End ---")
@@ -1929,8 +2059,8 @@ def get_blood_transfusion_points(patient_id):
                 continue
 
             try:
-                procedure_date = datetime.datetime.strptime(performed_date[:10], "%Y-%m-%d")
-                months_diff = (datetime.datetime.now() - procedure_date).days / 30.44
+                procedure_date = dt_module.datetime.strptime(performed_date[:10], "%Y-%m-%d")
+                months_diff = (dt_module.datetime.now() - procedure_date).days / 30.44
                 if months_diff > 12:
                     continue
 
@@ -2215,7 +2345,7 @@ def get_condition_points_from_prefetch(conditions_bundle, codes_score_2, prefix_
     # except Exception as e:
     #     perform_date_check = False
     #     app.logger.error(f"Error calculating date threshold for condition prefetch filter: {e}")
-    today = datetime.date.today() # Still needed for prefix rule date conditions
+    today = dt_module.date.today() # Still needed for prefix rule date conditions
 
     processed_conditions = set() # Avoid duplicate processing of same resources in bundle
     if conditions_bundle and "entry" in conditions_bundle:
@@ -2236,7 +2366,7 @@ def get_condition_points_from_prefetch(conditions_bundle, codes_score_2, prefix_
                     try:
                         date_str_part = recorded_date_str.split('T')[0]
                         if len(date_str_part) >= 10:
-                            parsed_date = datetime.datetime.strptime(date_str_part[:10], "%Y-%m-%d").date()
+                            parsed_date = dt_module.datetime.strptime(date_str_part[:10], "%Y-%m-%d").date()
                     except ValueError:
                         app.logger.warning(f"Could not parse recordedDate '{recorded_date_str}' for Condition ID {cond_id} for prefix rule date checks.")
                         # parsed_date remains None
@@ -2958,244 +3088,15 @@ if PERFORMANCE_OPTIMIZER_AVAILABLE:
 
 # --- Modified: Enhanced calculate_risk_ui_page with performance optimization ---
 
-# --- Main Execution ---
-if __name__ == "__main__":
-    app.logger.info("Starting application setup in __main__...") # NEW LOG
-    # Ensure templates directory exists
-    if not os.path.exists("templates"):
-        os.makedirs("templates")
-        app.logger.info("Created 'templates' directory.") # NEW LOG
-    else:
-        app.logger.info("'templates' directory already exists.") # NEW LOG
-    
-    # Create dummy HTML files if they don't exist for basic functionality
-    # layout.html
-    if not os.path.exists("templates/layout.html"):
-        with open("templates/layout.html", "w", encoding="utf-8") as f:
-            f.write("""<!DOCTYPE html>
-<html lang=\"zh-TW\">
-<head>
-    <meta charset=\"UTF-8\">
-    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">
-    <title>{{ title }} - SMART FHIR App</title>
-    <link rel=\"stylesheet\" href=\"https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css\">
-    <style>
-        body { padding-top: 5rem; }
-        .flash-messages .alert { margin-bottom: 1rem; }
-    </style>
-</head>
-<body>
-    <nav class=\"navbar navbar-expand-md navbar-dark bg-dark fixed-top\">
-        <a class=\"navbar-brand\" href=\"{{ url_for('index') }}\">FHIR App</a>
-        <button class=\"navbar-toggler\" type=\"button\" data-toggle=\"collapse\" data-target=\"#navbarsExampleDefault\" aria-controls=\"navbarsExampleDefault\" aria-expanded=\"false\" aria-label=\"Toggle navigation\">
-            <span class=\"navbar-toggler-icon\"></span>
-        </button>
-        <div class=\"collapse navbar-collapse\" id=\"navbarsExampleDefault\">
-            <ul class=\"navbar-nav mr-auto\">
-                <li class=\"nav-item\"><a class=\"nav-link\" href=\"{{ url_for('index') }}\">首頁</a></li>
-                {% if current_user.is_authenticated %}
-                <li class=\"nav-item\"><a class=\"nav-link\" href=\"{{ url_for('main_app_page') }}\">主應用</a></li>
-                {% endif %}
-            </ul>
-            <ul class=\"navbar-nav ml-auto\">
-                {% if current_user.is_authenticated %}
-                    <li class=\"nav-item\"><span class=\"navbar-text\">已登入：{{ current_user.name }} | </span></li>
-                    <li class=\"nav-item\"><a class=\"nav-link\" href=\"{{ url_for('logout') }}\">登出</a></li>
-                {% else %}
-                    <!-- <li class=\"nav-item\"><a class=\"nav-link\" href=\"#\">登入 (EHR Launch)</a></li> -->
-                {% endif %}
-            </ul>
-        </div>
-    </nav>
-
-    <main role=\"main\" class=\"container\">
-        <div class=\"flash-messages\">
-            {% with messages = get_flashed_messages(with_categories=true) %}
-                {% if messages %}
-                    {% for category, message in messages %}
-                        <div class=\"alert alert-{{ category }} alert-dismissible fade show\" role=\"alert\">
-                            {{ message }}
-                            <button type=\"button\" class=\"close\" data-dismiss=\"alert\" aria-label=\"Close\">
-                                <span aria-hidden=\"true\">&times;</span>
-                            </button>
-                        </div>
-                    {% endfor %}
-                {% endif %}
-            {% endwith %}
-        </div>
-        {% block content %}{% endblock %}
-    </main>
-
-    <script src=\"https://code.jquery.com/jquery-3.5.1.slim.min.js\"></script>
-    <script src=\"https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.3/dist/umd/popper.min.js\"></script>
-    <script src=\"https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js\"></script>
-</body>
-</html>""")
-        app.logger.info("Created 'templates/layout.html'.") # NEW LOG
-
-    # index.html
-    if not os.path.exists("templates/index.html"):
-        with open("templates/index.html", "w", encoding="utf-8") as f:
-            f.write("""{% extends "layout.html" %}
-{% block content %}
-    <div class=\"starter-template\">
-        <h1>{{ title }}</h1>
-        <p class=\"lead\">歡迎使用此 SMART on FHIR 應用程式。<br>
-            請透過您的電子病歷 (EHR) 系統啟動此應用程式以進行病患相關操作。
-        </p>
-        {% if not current_user.is_authenticated %}
-        <p>如果您正在進行開發且想要測試，您可以使用 SMART Health IT Sandbox 進行測試：</p>
-        <div class=\"row\">
-            <div class=\"col-md-6\">
-                <div class=\"card mb-4\">
-                    <div class=\"card-header\">
-                        <h5 class=\"mb-0\">SMART Health IT R4 Sandbox</h5>
-                    </div>
-                    <div class=\"card-body\">
-                        <p>使用 SMART Health IT R4 Sandbox 進行測試：</p>
-                        <a href=\"https://launch.smarthealthit.org/launcher?iss=https://launch.smarthealthit.org/v/r4/fhir&launch=eyJhIjoiMSJ9\" 
-                           class=\"btn btn-primary\">
-                            從 SMART R4 Sandbox 啟動
-                        </a>
-                        <p class=\"mt-2 small text-muted\">這會帶您到 SMART Health IT 的啟動器頁面，您可以在那裡選擇病患和其他啟動選項。</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-        {% else %}
-        <p>您已登入。 <a href=\"{{ url_for('main_app_page') }}\">前往主應用程式頁面</a></p>
-        {% endif %}
-    </div>
-{% endblock %}""")
-        app.logger.info("Created 'templates/index.html'.") # NEW LOG
-
-    # main_app.html
-    if not os.path.exists("templates/main_app.html"):
-        with open("templates/main_app.html", "w", encoding="utf-8") as f:
-            f.write("""{% extends "layout.html" %}
-{% block content %}
-    <h2>{{ title }}</h2>
-    {% if current_user.is_authenticated %}
-        <p>歡迎, <strong>{{ current_user.name or '使用者' }}</strong>!</p> {# Default to '使用者' if name is None #}
-        <p>Email: {{ current_user.email or '未提供' }}</p>
-        <p>FHIR User URL: {{ current_user.fhir_user_url or '未提供' }}</p>
-        
-        {% if session.patient_id %}
-            <p>目前病患 ID: <strong>{{ session.patient_id }}</strong></p>
-            <p>病患姓名: <strong>{{ patient_name_display or '未提供' }}</strong></p> {# Use the new patient_name_display variable #}
-            
-            {% if patient_data and patient_data.id %}
-                <h4>病患資訊 (範例 FHIR Resource):</h4>
-                <pre>{{ patient_data | tojson(indent=2) }}</pre>
-            {% elif patient_data %}
-                 <h4>病患資訊 (範例):</h4>
-                 <pre>{{ patient_data | tojson(indent=2) }}</pre>
-            {% endif %}
-            <a href="{{ url_for('calculate_risk_ui_page') }}" class="btn btn-info mt-2">計算此病患的出血風險</a>
-            {% if session.get('fhir_server_url') %}
-                <a href="https://launch.smarthealthit.org/launcher?iss={{ session.get('fhir_server_url') }}" class="btn btn-secondary mt-2 ml-2">返回EHR選擇其他病患</a>
-            {% endif %}
-        {% else %}
-            <div class="alert alert-info">目前沒有選定的病患情境。</div>
-        {% endif %}
-        
-        <p class="mt-3">Access Token: <small>{{ session.access_token[:30] }}...</small> (僅顯示前30字元)</p>
-        <p>FHIR Server URL: {{ session.fhir_server_url }}</p>
-        <p>Granted Scopes: {{ session.scopes_granted }}</p>
-
-        <h4>ID Token Claims (部分):</h4>
-        <pre style="max-height: 200px; overflow-y: auto; background-color: #f8f9fa; padding: 10px; border-radius: 5px;">
-        ID: {{ session.get('id_token_claims', {}).get('sub') }}
-        Name: {{ session.get('id_token_claims', {}).get('name', session.get('id_token_claims', {}).get('profile_name'))}}
-        Email: {{ session.get('id_token_claims', {}).get('email') }}
-        fhirUser: {{ session.get('id_token_claims', {}).get('fhirUser', session.get('id_token_claims', {}).get('profile')) }}
-        Exp: {{ human_readable_time(session.get('id_token_claims', {}).get('exp')) }}
-        </pre>
-        
-    {% else %}
-        <p>請登入以查看此頁面。</p>
-    {% endif %}
-
-    <!-- 您的應用程式主要內容將會放在這裡 -->
-    <!-- 例如，如果這是一個UI應用程式，可以在這裡呼叫計算邏輯 -->
-
-{% endblock %}
-
-{% macro human_readable_time(timestamp) -%}
-    {{ datetime.datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S') if timestamp else 'N/A' }}
-{%- endmacro %}
-""")
-        app.logger.info("Created 'templates/main_app.html'.") # NEW LOG
-
-    # calculate_risk_ui.html (NEW)
-    if not os.path.exists("templates/calculate_risk_ui.html"):
-        with open("templates/calculate_risk_ui.html", "w", encoding="utf-8") as f:
-            f.write("""{% extends "layout.html" %}
-{% block content %}
-    <h2>{{ title }} - 病患 ID: {{ patient_id }}</h2>
-
-    {% if calculation_details and calculation_details.category %}
-        <div class="alert alert-{% if calculation_details.category == high_risk_label_for_template %}danger{% elif calculation_details.category == 'medium' %}warning{% else %}info{% endif %}" role="alert">
-            <h4>出血風險等級: <span style="text-transform: capitalize;">{{ calculation_details.category }}</span> (總分: {{ calculation_details.score }})</h4>
-        </div>
-
-        <h3>計算細節:</h3>
-        <table class="table table-bordered table-sm">
-            <tbody>
-                <tr><th>年齡:</th><td>{{ calculation_details.age if calculation_details.age is not none else '未知' }}</td></tr>
-                <tr><th>性別:</th><td>{{ calculation_details.sex if calculation_details.sex else '未知' }}</td></tr>
-                <tr><th>Hb (g/dL):</th><td>{{ "%.1f" | format(calculation_details.hb_value) if calculation_details.hb_value is not none else '未測量或未知' }}</td></tr>
-                <tr><th>血小板 (k/uL):</th><td>{{ "%.0f" | format(calculation_details.platelet_value) if calculation_details.platelet_value is not none else '未測量或未知' }}</td></tr>
-                <tr><th>eGFR (mL/min):</th><td>{{ "%.0f" | format(calculation_details.egfr_value) if calculation_details.egfr_value is not none else '未測量或未知' }}</td></tr>
-                <tr><th>特定診斷/文字點數:</th><td>{{ calculation_details.condition_points }}</td></tr>
-                <tr><th>特定用藥點數:</th><td>{{ calculation_details.medication_points }}</td></tr>
-                <tr><th>輸血點數:</th><td>{{ calculation_details.blood_transfusion_points }}</td></tr>
-            </tbody>
-        </table>
-
-        {% if calculation_details.matched_transfusions %}
-            <h5>符合條件的輸血記錄 (過去12個月內):</h5>
-            <ul>
-            {% for trans in calculation_details.matched_transfusions %}
-                <li>{{ trans.text }} ({{ trans.date[:10] }}) - 原因: {{ trans.reason }}</li>
-            {% endfor %}
-            </ul>
-        {% endif %}
-
-        <h4>原始評分項目 (來自設定檔):</h4>
-        <pre style="max-height: 200px; overflow-y: auto; background-color: #f8f9fa; padding: 10px; border-radius: 5px;">{{ calculation_details.score_details | tojson(indent=2) }}</pre>
-
-        {# NEW: Conditional link for high risk guideline image #}
-        {% if calculation_details.category == high_risk_label_for_template %}
-            <div class="mt-3">
-                <a href="{{ url_for('static', filename='images/HBR_guideline.jpg') }}" target="_blank" class="btn btn-danger">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-exclamation-triangle-fill" viewBox="0 0 16 16" style="margin-right: 5px;">
-                        <path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/>
-                    </svg>
-                    查閱高出血風險(HBR)處置建議指引圖示
-                </a>
-            </div>
-        {% endif %}
-
-    {% else %}
-        <div class="alert alert-warning" role="alert">
-            無法計算或顯示出血風險。請檢查資料是否完整或稍後再試。
-        </div>
-    {% endif %}
-
-    <a href="{{ url_for('main_app_page') }}" class="btn btn-secondary mt-3">返回主應用頁面</a>
-    {% if session.get('fhir_server_url') %}
-        <a href="https://launch.smarthealthit.org/launcher?iss={{ session.get('fhir_server_url') }}" class="btn btn-outline-secondary mt-3 ml-2">返回EHR選擇其他病患</a>
-    {% endif %}
-{% endblock %}
-""")
-        app.logger.info("Created 'templates/calculate_risk_ui.html'.") # NEW LOG
-
-    app.jinja_env.globals['datetime'] = datetime # Make datetime available in templates
-    app.jinja_env.globals['isinstance'] = isinstance
-    app.jinja_env.globals['get_human_name_text'] = get_human_name_text
+# --- Initialize Jinja2 globals ---
+app.jinja_env.globals['datetime'] = dt_module # Make datetime module available in templates
+app.jinja_env.globals['isinstance'] = isinstance
+app.jinja_env.globals['get_human_name_text'] = get_human_name_text
 
 
-    # Remember to install PyJWT: pip install "PyJWT[crypto]"
+# --- GAE/Production Entry Point ---
+if __name__ == '__main__':
+    # Only run the development server if this file is executed directly
+    # In GAE, this will be handled by gunicorn
     app.run(debug=True, host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))
 # --- End Main Execution ---

@@ -1,4 +1,9 @@
 {% extends "layout.html" %}
+
+{% macro human_readable_time(d_module, timestamp) -%}
+    {{ d_module.datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S') if timestamp else 'N/A' }}
+{%- endmacro %}
+
 {% block content %}
 <div class="container-fluid">
     <!-- Header Section -->
@@ -223,7 +228,7 @@
                                             </tr>
                                             <tr>
                                                 <td><strong>Expiration Time:</strong></td>
-                                                <td><code class="small">{{ human_readable_time(session.get('id_token_claims', {}).get('exp')) }}</code></td>
+                                                <td><code class="small">{{ human_readable_time(dt_module, session.get('id_token_claims', {}).get('exp')) }}</code></td>
                                             </tr>
                                         </table>
                                     {% else %}
@@ -268,10 +273,6 @@
 {% endif %}
 
 {% endblock %}
-
-{% macro human_readable_time(timestamp) -%}
-    {{ datetime.datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S') if timestamp else 'N/A' }}
-{%- endmacro %}
 
 {% block extra_css %}
 <style>

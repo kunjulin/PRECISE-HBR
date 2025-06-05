@@ -13,6 +13,7 @@ import tempfile
 from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime, date
 import requests
+import traceback
 
 # Add the current directory to Python path to import APP
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -616,4 +617,24 @@ if __name__ == '__main__':
     
     # Run tests
     success = run_tests()
-    sys.exit(0 if success else 1) 
+    sys.exit(0 if success else 1)
+
+# Simple test script to check application imports
+try:
+    print("Testing app.py import...")
+    import app
+    print("✓ App imported successfully")
+    
+    # Test Flask app creation
+    if hasattr(app, 'app'):
+        print("✓ Flask app instance found")
+    else:
+        print("✗ Flask app instance not found")
+    
+    print("✓ All tests passed")
+    
+except Exception as e:
+    print(f"✗ Error importing app: {e}")
+    print("\nFull traceback:")
+    traceback.print_exc()
+    sys.exit(1) 
