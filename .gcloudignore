@@ -15,5 +15,75 @@
 
 # Python pycache:
 __pycache__/
-# Ignored by the build system
-/setup.cfg
+*.pyc
+*.pyo
+*.pyd
+*.py.class
+
+# Testing and development files
+test_*.py
+*_test.py
+quick_test.py
+simple_test.py
+run_tests.py
+test_config.json
+TEST_README.md
+RUN_TESTS_GUIDE.md
+
+# Documentation and guides (可選)
+*.md
+!SMART_LU_DEPLOYMENT_GUIDE.md
+
+# Environment files
+*.env
+cerner_sandbox.env
+production.env.template
+
+# Temporary files
+*.tmp
+*.temp
+/tmp/
+versions_to_delete.txt
+
+# Performance and optimization files
+fhir_performance_optimizer.py
+performance_test_report.json
+test_performance_optimizer.py
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# Docker files (如果不使用 Docker)
+Dockerfile
+.dockerignore
+
+# Backup files
+*.bak
+*.backup
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# FHIR value sets (如果不需要)
+*_valueset.json
+example_*.json
+
+# CDS services config (如果不需要)
+cds-services.json

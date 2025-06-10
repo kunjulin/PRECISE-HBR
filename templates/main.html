@@ -1,0 +1,158 @@
+{% extends "layout.html" %}
+
+{% block title %}FHIR Bleeding Risk Calculator{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div id="loading-container" class="text-center">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <p class="mt-2">正在從 FHIR 伺服器獲取患者數據並計算風險評分，請稍候...</p>
+    </div>
+
+    <div id="error-container" class="alert alert-danger" style="display: none;">
+        <h4><i class="fas fa-exclamation-triangle"></i> 計算風險時發生錯誤</h4>
+        <p id="error-message"></p>
+        <button onclick="window.location.reload()" class="btn btn-primary">重試</button>
+    </div>
+
+    <div id="results-container" style="display: none;">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h2 class="h3">出血風險評分結果</h2>
+            <button onclick="window.location.reload()" class="btn btn-sm btn-outline-secondary">
+                <i class="fas fa-sync-alt"></i> 重新整理數據
+            </button>
+        </div>
+
+        <div class="row">
+            <!-- Patient Info -->
+            <div class="col-md-4">
+                <div class="card shadow-sm mb-4">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><i class="fas fa-user-circle"></i> 患者資訊</h5>
+                    </div>
+                    <div class="card-body">
+                        <p><strong>姓名:</strong> <span id="patient-name"></span></p>
+                        <p><strong>年齡:</strong> <span id="patient-age"></span></p>
+                        <p><strong>性別:</strong> <span id="patient-gender"></span></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Total Score -->
+            <div class="col-md-8">
+                <div class="card shadow-sm mb-4">
+                    <div class="card-header bg-light">
+                        <h5 class="mb-0"><i class="fas fa-calculator"></i> 總風險評分</h5>
+                    </div>
+                    <div class="card-body text-center">
+                        <h1 id="total-score" class="display-3 fw-bold"></h1>
+                        <p id="risk-level" class="h4"></p>
+                        <p id="recommendation" class="lead"></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Score Breakdown -->
+        <div class="card shadow-sm">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-list-ul"></i> 分數組成</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>風險因素</th>
+                            <th>數值</th>
+                            <th>分數</th>
+                            <th>數據日期</th>
+                        </tr>
+                    </thead>
+                    <tbody id="score-components">
+                        <!-- Dynamic content will be inserted here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        fetchRiskData();
+    });
+
+    async function fetchRiskData() {
+        try {
+            const response = await fetch('/api/calculate_risk');
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+            }
+            const data = await response.json();
+            displayResults(data);
+        } catch (error) {
+            console.error('Error fetching risk data:', error);
+            displayError(error.message);
+        }
+    }
+
+    function displayResults(data) {
+        // Hide loading, show results
+        document.getElementById('loading-container').style.display = 'none';
+        document.getElementById('results-container').style.display = 'block';
+
+        // Patient Info
+        document.getElementById('patient-name').textContent = data.patient_info.name || 'N/A';
+        document.getElementById('patient-age').textContent = data.patient_info.age !== null ? data.patient_info.age : 'N/A';
+        document.getElementById('patient-gender').textContent = data.patient_info.gender || 'N/A';
+
+        // Total Score
+        document.getElementById('total-score').textContent = data.total_score;
+        const riskLevelEl = document.getElementById('risk-level');
+        riskLevelEl.textContent = data.risk_level;
+        
+        // Set risk level styling based on content
+        if (data.risk_level.includes('High') || data.risk_level.includes('高')) {
+            riskLevelEl.className = 'h4 text-danger';
+        } else if (data.risk_level.includes('Medium') || data.risk_level.includes('中')) {
+            riskLevelEl.className = 'h4 text-warning';
+        } else {
+            riskLevelEl.className = 'h4 text-success';
+        }
+        
+        document.getElementById('recommendation').textContent = data.recommendation;
+
+        // Score Breakdown
+        const componentsBody = document.getElementById('score-components');
+        componentsBody.innerHTML = ''; // Clear previous content
+        
+        if (data.score_components && data.score_components.length > 0) {
+            data.score_components.forEach(item => {
+                const row = `
+                    <tr>
+                        <td>${item.name || 'Unnamed Criterion'}</td>
+                        <td>${item.value || 'N/A'}</td>
+                        <td><span class="badge ${item.points > 0 ? 'bg-danger' : 'bg-secondary'}">${item.points}</span></td>
+                        <td>${item.date || 'N/A'}</td>
+                    </tr>
+                `;
+                componentsBody.innerHTML += row;
+            });
+        } else {
+            const row = `<tr><td colspan="4" class="text-center">No risk components identified.</td></tr>`;
+            componentsBody.innerHTML = row;
+        }
+    }
+
+    function displayError(errorMessage) {
+        document.getElementById('loading-container').style.display = 'none';
+        document.getElementById('error-container').style.display = 'block';
+        document.getElementById('error-message').textContent = errorMessage;
+    }
+</script>
+{% endblock %} 

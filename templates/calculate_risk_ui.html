@@ -9,42 +9,46 @@
                         <h2 class="mb-1">{{ title }} - Patient ID: {{ patient_id }}</h2>
                         <p class="text-muted mb-0">
                             <i class="fas fa-info-circle mr-1"></i>
-                            ARC-HBR Bleeding Risk Assessment based on clinical factors
+                            PRECISE-DAPT 出血風險評估 5-item 模型 ({{ config_version or '2.1.0' }})
                         </p>
                     </div>
                     <div>
                         <a href="{{ url_for('main_app_page') }}" class="btn btn-outline-secondary">
-                            <i class="fas fa-arrow-left mr-2"></i>Back to Main
+                            <i class="fas fa-arrow-left mr-2"></i>返回主頁
                         </a>
                     </div>
                 </div>
 
     {% if calculation_details and calculation_details.category %}
                     <!-- Risk Category Alert -->
-                    <div class="alert alert-{% if calculation_details.category == high_risk_label_for_template %}danger{% elif calculation_details.category == 'medium' %}warning{% else %}info{% endif %} shadow-sm" role="alert">
+                    <div class="alert alert-{% if 'High' in calculation_details.category %}danger{% elif 'Moderate' in calculation_details.category %}warning{% elif 'Low' in calculation_details.category and 'Very Low' not in calculation_details.category %}info{% else %}success{% endif %} shadow-sm" role="alert">
                         <div class="d-flex align-items-center">
                             <div class="mr-3">
-                                {% if calculation_details.category == high_risk_label_for_template %}
+                                {% if 'High' in calculation_details.category %}
                                     <i class="fas fa-exclamation-triangle fa-2x"></i>
-                                {% elif calculation_details.category == 'medium' %}
+                                {% elif 'Moderate' in calculation_details.category %}
                                     <i class="fas fa-exclamation-circle fa-2x"></i>
+                                {% elif 'Low' in calculation_details.category and 'Very Low' not in calculation_details.category %}
+                                    <i class="fas fa-info-circle fa-2x"></i>
                                 {% else %}
                                     <i class="fas fa-check-circle fa-2x"></i>
                                 {% endif %}
                             </div>
                             <div>
                                 <h4 class="alert-heading mb-1">
-                                    Bleeding Risk Level: 
+                                    出血風險等級: 
                                     <span class="font-weight-bold text-uppercase">{{ calculation_details.category }}</span>
                                 </h4>
                                 <p class="mb-0">
-                                    <strong>Total Score: {{ calculation_details.score }}</strong>
-                                    {% if calculation_details.category == high_risk_label_for_template %}
-                                        - <strong>Consider enhanced bleeding precautions and frequent monitoring</strong>
-                                    {% elif calculation_details.category == 'medium' %}
-                                        - Standard monitoring with caution
+                                    <strong>PRECISE-DAPT 分數: {{ calculation_details.score }}</strong>
+                                    {% if 'High' in calculation_details.category %}
+                                        - <strong>建議縮短 DAPT 持續時間 (3-6 個月)</strong>
+                                    {% elif 'Moderate' in calculation_details.category %}
+                                        - <strong>標準 DAPT 持續時間，但需謹慎監測</strong>
+                                    {% elif 'Low' in calculation_details.category and 'Very Low' not in calculation_details.category %}
+                                        - <strong>建議標準 DAPT 持續時間 (12 個月)</strong>
                                     {% else %}
-                                        - Low bleeding risk detected. Consider standard antithrombotic treatment with routine monitoring
+                                        - <strong>極低出血風險，可考慮延長 DAPT 持續時間</strong>
                                     {% endif %}
                                 </p>
                             </div>
@@ -57,22 +61,27 @@
                             <div class="card h-100 shadow-sm">
                                 <div class="card-header bg-primary text-white">
                                     <h5 class="mb-0">
-                                        <i class="fas fa-user-md mr-2"></i>Patient Demographics & Lab Values
+                                        <i class="fas fa-user-md mr-2"></i>患者資料 & PRECISE-DAPT 參數
                                     </h5>
                                 </div>
                                 <div class="card-body">
                                     <table class="table table-borderless">
                                         <tbody>
                                             <tr>
-                                                <th class="w-40">Age:</th>
+                                                <th class="w-40">年齡:</th>
                                                 <td>
-                                                    <span class="badge badge-secondary">
-                                                        {{ calculation_details.age if calculation_details.age is not none else 'Unknown' }} years
+                                                    <span class="badge badge-{% if calculation_details.score_details.age_score_component > 0 %}warning{% else %}secondary{% endif %}">
+                                                        {{ calculation_details.age if calculation_details.age is not none else 'Unknown' }} 歲
                                                     </span>
+                                                    {% if calculation_details.score_details.age_score_component > 0 %}
+                                                        <small class="text-warning ml-2">
+                                                            <i class="fas fa-plus-circle"></i> {{ calculation_details.score_details.age_score_component }}分
+                                                        </small>
+                                                    {% endif %}
                                                 </td>
                                             </tr>
                                             <tr>
-                                                <th>Gender:</th>
+                                                <th>性別:</th>
                                                 <td>
                                                     <span class="badge badge-info">
                                                         {{ calculation_details.sex.title() if calculation_details.sex else 'Unknown' }}
@@ -80,7 +89,7 @@
                                                 </td>
                                             </tr>
                                             <tr>
-                                                <th>Hemoglobin (g/dL):</th>
+                                                <th>血紅蛋白 (g/dL):</th>
                                                 <td>
                                                     {% if calculation_details.hb_value is not none %}
                                                         <span class="badge badge-{% if calculation_details.score_details.hemoglobin_score_component > 0 %}warning{% else %}success{% endif %}">
@@ -88,45 +97,58 @@
                                                         </span>
                                                         {% if calculation_details.score_details.hemoglobin_score_component > 0 %}
                                                             <small class="text-warning ml-2">
-                                                                <i class="fas fa-exclamation-triangle"></i> Below threshold
+                                                                <i class="fas fa-plus-circle"></i> {{ calculation_details.score_details.hemoglobin_score_component }}分
                                                             </small>
                                                         {% endif %}
                                                     {% else %}
-                                                        <span class="badge badge-secondary">Not measured</span>
+                                                        <span class="badge badge-secondary">未測量</span>
                                                     {% endif %}
                                                 </td>
                                             </tr>
                                             <tr>
-                                                <th>Platelet (k/uL):</th>
+                                                <th>肌酐清除率 (mL/min/1.73m²):</th>
                                                 <td>
-                                                    {% if calculation_details.platelet_value is not none %}
-                                                        <span class="badge badge-{% if calculation_details.score_details.platelet_score_component > 0 %}warning{% else %}success{% endif %}">
-                                                            {{ "%.0f" | format(calculation_details.platelet_value) }}
+                                                    {% if calculation_details.ccr_value is not none %}
+                                                        <span class="badge badge-{% if calculation_details.score_details.creatinine_clearance_score_component > 0 %}warning{% else %}success{% endif %}">
+                                                            {{ "%.0f" | format(calculation_details.ccr_value) }}
                                                         </span>
-                                                        {% if calculation_details.score_details.platelet_score_component > 0 %}
+                                                        {% if calculation_details.score_details.creatinine_clearance_score_component > 0 %}
                                                             <small class="text-warning ml-2">
-                                                                <i class="fas fa-exclamation-triangle"></i> Below threshold
+                                                                <i class="fas fa-plus-circle"></i> {{ calculation_details.score_details.creatinine_clearance_score_component }}分
                                                             </small>
                                                         {% endif %}
                                                     {% else %}
-                                                        <span class="badge badge-secondary">Not measured</span>
+                                                        <span class="badge badge-secondary">未測量</span>
                                                     {% endif %}
                                                 </td>
                                             </tr>
                                             <tr>
-                                                <th>eGFR (mL/min):</th>
+                                                <th>白血球計數 (×10⁹/L):</th>
                                                 <td>
-                                                    {% if calculation_details.egfr_value is not none %}
-                                                        <span class="badge badge-{% if calculation_details.score_details.egfr_score_component > 0 %}warning{% else %}success{% endif %}">
-                                                            {{ "%.0f" | format(calculation_details.egfr_value) }}
+                                                    {% if calculation_details.wbc_value is not none %}
+                                                        <span class="badge badge-{% if calculation_details.score_details.wbc_score_component > 0 %}warning{% else %}success{% endif %}">
+                                                            {{ "%.1f" | format(calculation_details.wbc_value) }}
                                                         </span>
-                                                        {% if calculation_details.score_details.egfr_score_component > 0 %}
+                                                        {% if calculation_details.score_details.wbc_score_component > 0 %}
                                                             <small class="text-warning ml-2">
-                                                                <i class="fas fa-exclamation-triangle"></i> Below threshold
+                                                                <i class="fas fa-plus-circle"></i> {{ calculation_details.score_details.wbc_score_component }}分
                                                             </small>
                                                         {% endif %}
                                                     {% else %}
-                                                        <span class="badge badge-secondary">Not measured</span>
+                                                        <span class="badge badge-secondary">未測量</span>
+                                                    {% endif %}
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <th>既往出血史:</th>
+                                                <td>
+                                                    <span class="badge badge-{% if calculation_details.bleeding_history %}danger{% else %}success{% endif %}">
+                                                        {% if calculation_details.bleeding_history %}有{% else %}無{% endif %}
+                                                    </span>
+                                                    {% if calculation_details.score_details.bleeding_history_score_component > 0 %}
+                                                        <small class="text-danger ml-2">
+                                                            <i class="fas fa-plus-circle"></i> {{ calculation_details.score_details.bleeding_history_score_component }}分
+                                                        </small>
                                                     {% endif %}
                                                 </td>
                                             </tr>
@@ -134,238 +156,204 @@
                                     </table>
                                 </div>
                             </div>
-        </div>
+                        </div>
 
-                        <!-- Right Column: Risk Factor Points -->
+                        <!-- Right Column: PRECISE-DAPT Score Summary -->
                         <div class="col-lg-6 mb-4">
                             <div class="card h-100 shadow-sm">
                                 <div class="card-header bg-success text-white">
                                     <h5 class="mb-0">
-                                        <i class="fas fa-calculator mr-2"></i>Risk Factor Points Breakdown
+                                        <i class="fas fa-calculator mr-2"></i>PRECISE-DAPT 分數摘要
                                     </h5>
                                 </div>
                                 <div class="card-body">
                                     <table class="table table-borderless">
-            <tbody>
+                                        <tbody>
                                             <tr>
-                                                <th class="w-60">Age Component:</th>
+                                                <th class="w-60">年齡分數:</th>
                                                 <td class="text-right">
                                                     <span class="badge badge-{% if calculation_details.score_details.age_score_component > 0 %}warning{% else %}light{% endif %} badge-lg">
-                                                        {{ calculation_details.score_details.age_score_component }} points
+                                                        {{ calculation_details.score_details.age_score_component }} 分
                                                     </span>
                                                 </td>
                                             </tr>
                                             <tr>
-                                                <th>eGFR Component:</th>
-                                                <td class="text-right">
-                                                    <span class="badge badge-{% if calculation_details.score_details.egfr_score_component > 0 %}warning{% else %}light{% endif %} badge-lg">
-                                                        {{ calculation_details.score_details.egfr_score_component }} points
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                            <tr>
-                                                <th>Hemoglobin Component:</th>
+                                                <th>血紅蛋白分數:</th>
                                                 <td class="text-right">
                                                     <span class="badge badge-{% if calculation_details.score_details.hemoglobin_score_component > 0 %}warning{% else %}light{% endif %} badge-lg">
-                                                        {{ calculation_details.score_details.hemoglobin_score_component }} points
+                                                        {{ calculation_details.score_details.hemoglobin_score_component }} 分
                                                     </span>
                                                 </td>
                                             </tr>
                                             <tr>
-                                                <th>Platelet Component:</th>
+                                                <th>肌酐清除率分數:</th>
                                                 <td class="text-right">
-                                                    <span class="badge badge-{% if calculation_details.score_details.platelet_score_component > 0 %}warning{% else %}light{% endif %} badge-lg">
-                                                        {{ calculation_details.score_details.platelet_score_component }} points
+                                                    <span class="badge badge-{% if calculation_details.score_details.creatinine_clearance_score_component > 0 %}warning{% else %}light{% endif %} badge-lg">
+                                                        {{ calculation_details.score_details.creatinine_clearance_score_component }} 分
                                                     </span>
                                                 </td>
                                             </tr>
                                             <tr>
-                                                <th>Clinical Conditions:</th>
+                                                <th>白血球計數分數:</th>
                                                 <td class="text-right">
-                                                    <span class="badge badge-{% if calculation_details.condition_points > 0 %}danger{% else %}light{% endif %} badge-lg">
-                                                        {{ calculation_details.condition_points }} points
+                                                    <span class="badge badge-{% if calculation_details.score_details.wbc_score_component > 0 %}warning{% else %}light{% endif %} badge-lg">
+                                                        {{ calculation_details.score_details.wbc_score_component }} 分
                                                     </span>
                                                 </td>
                                             </tr>
                                             <tr>
-                                                <th>Medications:</th>
+                                                <th>既往出血史分數:</th>
                                                 <td class="text-right">
-                                                    <span class="badge badge-{% if calculation_details.medication_points > 0 %}danger{% else %}light{% endif %} badge-lg">
-                                                        {{ calculation_details.medication_points }} points
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                            <tr>
-                                                <th>Blood Transfusions:</th>
-                                                <td class="text-right">
-                                                    <span class="badge badge-{% if calculation_details.blood_transfusion_points > 0 %}danger{% else %}light{% endif %} badge-lg">
-                                                        {{ calculation_details.blood_transfusion_points }} points
+                                                    <span class="badge badge-{% if calculation_details.score_details.bleeding_history_score_component > 0 %}danger{% else %}light{% endif %} badge-lg">
+                                                        {{ calculation_details.score_details.bleeding_history_score_component }} 分
                                                     </span>
                                                 </td>
                                             </tr>
                                             <tr class="border-top">
-                                                <th class="h5">Total Score:</th>
+                                                <th class="h5">總分:</th>
                                                 <td class="text-right">
-                                                    <span class="badge badge-{% if calculation_details.category == high_risk_label_for_template %}danger{% elif calculation_details.category == 'medium' %}warning{% else %}success{% endif %} badge-lg h5 mb-0">
-                                                        {{ calculation_details.score }} points
+                                                    <span class="badge badge-{% if 'High' in calculation_details.category %}danger{% elif 'Moderate' in calculation_details.category %}warning{% elif 'Low' in calculation_details.category and 'Very Low' not in calculation_details.category %}info{% else %}success{% endif %} badge-lg h5 mb-0">
+                                                        {{ calculation_details.score }} 分
                                                     </span>
                                                 </td>
                                             </tr>
-            </tbody>
-        </table>
+                                        </tbody>
+                                    </table>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Matched Conditions Section -->
-                    {% if calculation_details.matched_conditions %}
-                        <div class="card shadow-sm mb-4">
-                            <div class="card-header bg-warning text-dark">
-                                <h5 class="mb-0">
-                                    <i class="fas fa-notes-medical mr-2"></i>
-                                    High-Risk Clinical Conditions ({{ calculation_details.matched_conditions|length }})
-                                </h5>
-                            </div>
-                            <div class="card-body">
-                                <div class="row">
-                                    {% for cond in calculation_details.matched_conditions %}
-                                        <div class="col-md-6 mb-3">
-                                            <div class="border rounded p-3 h-100">
-                                                <h6 class="font-weight-bold text-danger">
-                                                    <i class="fas fa-circle text-danger mr-2" style="font-size: 0.5rem;"></i>
-                                                    {{ cond.get('text', 'N/A') }}
-                                                </h6>
-                                                <p class="mb-1">
-                                                    <strong>Points:</strong> 
-                                                    <span class="badge badge-danger">{{ cond.get('score_contribution', 0) }}</span>
-                                                </p>
-                                                <p class="mb-1">
-                                                    <strong>Match:</strong> 
-                                                    <small class="text-muted">{{ cond.get('detail', '') }}</small>
-                                                </p>
-                                                <p class="mb-0">
-                                                    <strong>Date:</strong> 
-                                                    <small class="text-muted">{{ cond.get('date', 'N/A') }}</small>
-                                                </p>
-                                            </div>
-                                        </div>
-            {% endfor %}
-                                </div>
-                            </div>
-                        </div>
-        {% endif %}
-
-                    <!-- Matched Medications Section -->
-                    {% if calculation_details.matched_medications %}
+                    <!-- Detailed Risk Components Section -->
+                    {% if risk_components %}
                         <div class="card shadow-sm mb-4">
                             <div class="card-header bg-info text-white">
                                 <h5 class="mb-0">
-                                    <i class="fas fa-pills mr-2"></i>
-                                    High-Risk Medications ({{ calculation_details.matched_medications|length }})
+                                    <i class="fas fa-list-ul mr-2"></i>
+                                    詳細 PRECISE-DAPT 組件 ({{ risk_components|length }})
                                 </h5>
                             </div>
                             <div class="card-body">
-                                <div class="row">
-                                    {% for med in calculation_details.matched_medications %}
-                                        <div class="col-md-6 mb-3">
-                                            <div class="border rounded p-3 h-100">
-                                                <h6 class="font-weight-bold text-primary">
-                                                    <i class="fas fa-pill text-primary mr-2"></i>
-                                                    {{ med.get('text', 'N/A') }}
-                                                </h6>
-                                                <p class="mb-1">
-                                                    <strong>Points:</strong> 
-                                                    <span class="badge badge-{% if med.get('type') == 'OAC' %}danger{% else %}warning{% endif %}">
-                                                        {{ med.get('score_contribution', 0) }}
-                                                    </span>
-                                                </p>
-                                                <p class="mb-1">
-                                                    <strong>Type:</strong> 
-                                                    <span class="badge badge-secondary">{{ med.get('type', 'Unknown') }}</span>
-                                                </p>
-                                                <p class="mb-0">
-                                                    <strong>Match:</strong> 
-                                                    <small class="text-muted">{{ med.get('detail', '') }}</small>
-                                                </p>
-                                            </div>
-                                        </div>
-            {% endfor %}
+                                <div class="table-responsive">
+                                    <table class="table table-hover">
+                                        <thead class="thead-light">
+                                            <tr>
+                                                <th>參數</th>
+                                                <th>數值</th>
+                                                <th>分數</th>
+                                                <th>日期</th>
+                                                <th>說明</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for component in risk_components %}
+                                                <tr class="{% if component.score > 0 %}table-warning{% endif %}">
+                                                    <td>
+                                                        <strong>{{ component.parameter }}</strong>
+                                                    </td>
+                                                    <td>{{ component.value }}</td>
+                                                    <td>
+                                                        <span class="badge badge-{% if component.score >= 15 %}danger{% elif component.score >= 5 %}warning{% elif component.score > 0 %}info{% else %}secondary{% endif %}">
+                                                            {{ component.score }}
+                                                        </span>
+                                                    </td>
+                                                    <td>
+                                                        <small class="text-muted">{{ component.date }}</small>
+                                                    </td>
+                                                    <td>
+                                                        <small class="text-muted">{{ component.description }}</small>
+                                                    </td>
+                                                </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
                                 </div>
                             </div>
                         </div>
-        {% endif %}
-
-                    <!-- Blood Transfusion Section -->
-                    {% if calculation_details.matched_transfusions %}
-                        <div class="card shadow-sm mb-4">
-                            <div class="card-header bg-danger text-white">
-                                <h5 class="mb-0">
-                                    <i class="fas fa-tint mr-2"></i>
-                                    Blood Transfusions (Past 12 months)
-                                </h5>
-                            </div>
-                            <div class="card-body">
-                                <div class="row">
-                                    {% for trans in calculation_details.matched_transfusions %}
-                                        <div class="col-md-6 mb-3">
-                                            <div class="border rounded p-3 h-100">
-                                                <h6 class="font-weight-bold text-danger">
-                                                    <i class="fas fa-tint text-danger mr-2"></i>
-                                                    {{ trans.text }}
-                                                </h6>
-                                                <p class="mb-1">
-                                                    <strong>Date:</strong> {{ trans.date[:10] }}
-                                                </p>
-                                                <p class="mb-0">
-                                                    <strong>Reason:</strong> {{ trans.reason }}
-                                                </p>
-                                            </div>
-                                        </div>
-            {% endfor %}
-                                </div>
-                            </div>
-                        </div>
-        {% endif %}
+                    {% endif %}
 
                     <!-- High Risk Guideline Section -->
-        {% if calculation_details.category == high_risk_label_for_template %}
+                    {% if 'High' in calculation_details.category %}
                         <div class="card shadow-sm mb-4 border-danger">
                             <div class="card-header bg-danger text-white">
                                 <h5 class="mb-0">
                                     <i class="fas fa-exclamation-triangle mr-2"></i>
-                                    High Bleeding Risk (HBR) Management Guidelines
+                                    高出血風險 DAPT 管理指引
                                 </h5>
                             </div>
                             <div class="card-body">
                                 <div class="alert alert-warning">
-                                    <h6><i class="fas fa-info-circle mr-2"></i>Clinical Recommendations:</h6>
+                                    <h6><i class="fas fa-info-circle mr-2"></i>臨床建議 (PRECISE-DAPT ≥25):</h6>
                                     <ul class="mb-0">
-                                        <li>Consider enhanced bleeding precautions</li>
-                                        <li>Monitor more frequently for bleeding events</li>
-                                        <li>Review anticoagulation therapy if applicable</li>
-                                        <li>Consult ESC 2020 HBR guidelines for detailed recommendations</li>
+                                        <li>考慮縮短 DAPT 持續時間 (3-6 個月)</li>
+                                        <li>密切監測出血事件</li>
+                                        <li>評估是否使用質子泵抑制劑</li>
+                                        <li>定期檢查血紅蛋白和腎功能</li>
                                     </ul>
                                 </div>
-                                <div class="text-center">
-                                    <a href="{{ url_for('static', filename='images/HBR_guideline.jpg') }}" 
-                                       target="_blank" 
-                                       class="btn btn-danger btn-lg">
-                                        <i class="fas fa-external-link-alt mr-2"></i>
-                                        View HBR Management Guidelines Image
-                                    </a>
-                                    <div class="mt-2">
-                                        <a href="https://academic.oup.com/eurheartj/article/42/13/1289/5901694" 
-                                           target="_blank" 
-                                           class="btn btn-outline-danger">
-                                            <i class="fas fa-book-medical mr-2"></i>
-                                            ESC 2020 HBR Guidelines (External Link)
-                                        </a>
-                                    </div>
+                            </div>
+                        </div>
+                    {% elif 'Moderate' in calculation_details.category %}
+                        <div class="card shadow-sm mb-4 border-warning">
+                            <div class="card-header bg-warning text-dark">
+                                <h5 class="mb-0">
+                                    <i class="fas fa-exclamation-circle mr-2"></i>
+                                    中等出血風險 DAPT 管理建議
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="alert alert-info">
+                                    <h6><i class="fas fa-info-circle mr-2"></i>臨床建議 (PRECISE-DAPT 16-24):</h6>
+                                    <ul class="mb-0">
+                                        <li>標準 DAPT 持續時間 (12 個月)</li>
+                                        <li>定期監測出血風險因素</li>
+                                        <li>考慮個人化治療策略</li>
+                                        <li>必要時諮詢心臟科醫師</li>
+                                    </ul>
                                 </div>
                             </div>
-            </div>
-        {% endif %}
+                        </div>
+                    {% elif 'Low' in calculation_details.category and 'Very Low' not in calculation_details.category %}
+                        <div class="card shadow-sm mb-4 border-info">
+                            <div class="card-header bg-info text-white">
+                                <h5 class="mb-0">
+                                    <i class="fas fa-info-circle mr-2"></i>
+                                    低出血風險 DAPT 管理建議
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="alert alert-success">
+                                    <h6><i class="fas fa-check-circle mr-2"></i>臨床建議 (PRECISE-DAPT 8-15):</h6>
+                                    <ul class="mb-0">
+                                        <li>標準 DAPT 持續時間 (12 個月) 建議</li>
+                                        <li>常規監測即可</li>
+                                        <li>根據缺血風險評估延長治療</li>
+                                        <li>遵循指引建議的抗血小板治療</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    {% else %}
+                        <div class="card shadow-sm mb-4 border-success">
+                            <div class="card-header bg-success text-white">
+                                <h5 class="mb-0">
+                                    <i class="fas fa-check-circle mr-2"></i>
+                                    極低出血風險 DAPT 管理建議
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="alert alert-success">
+                                    <h6><i class="fas fa-thumbs-up mr-2"></i>臨床建議 (PRECISE-DAPT 0-7):</h6>
+                                    <ul class="mb-0">
+                                        <li>極低出血風險，可考慮延長 DAPT</li>
+                                        <li>標準或延長 DAPT 持續時間皆可</li>
+                                        <li>根據缺血風險評估治療策略</li>
+                                        <li>可考慮長期雙重抗血小板治療</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    {% endif %}
 
                     <!-- Technical Details (Collapsible) -->
                     <div class="card shadow-sm">
@@ -374,17 +362,22 @@
                                     data-toggle="collapse" data-target="#technicalDetails" 
                                     aria-expanded="false" aria-controls="technicalDetails">
                                 <i class="fas fa-cogs mr-2"></i>
-                                Technical Calculation Details
+                                技術計算詳情
                                 <i class="fas fa-chevron-down float-right"></i>
                             </button>
                         </div>
                         <div id="technicalDetails" class="collapse">
                             <div class="card-body">
-                                <h6>Risk Parameters Configuration:</h6>
-                                <pre class="bg-light p-3" style="max-height: 300px; overflow-y: auto;">{{ calculation_details.risk_params | tojson(indent=2) }}</pre>
+                                <h6>配置版本: {{ config_version or '1.2.0' }}</h6>
+                                <h6>評分系統: PRECISE-DAPT 2017</h6>
                                 
-                                <h6 class="mt-4">Complete Score Details:</h6>
+                                <h6 class="mt-4">分數詳情:</h6>
                                 <pre class="bg-light p-3" style="max-height: 300px; overflow-y: auto;">{{ calculation_details.score_details | tojson(indent=2) }}</pre>
+                                
+                                {% if risk_components %}
+                                <h6 class="mt-4">完整組件清單:</h6>
+                                <pre class="bg-light p-3" style="max-height: 300px; overflow-y: auto;">{{ risk_components | tojson(indent=2) }}</pre>
+                                {% endif %}
                             </div>
                         </div>
                     </div>
@@ -395,25 +388,26 @@
                         <div class="d-flex align-items-center">
                             <i class="fas fa-exclamation-triangle fa-2x mr-3"></i>
                             <div>
-                                <h4 class="alert-heading">Unable to Calculate or Display Bleeding Risk</h4>
-                                <p class="mb-0">Please check if the data is complete or try again later.</p>
+                                <h4 class="alert-heading">無法計算或顯示 PRECISE-DAPT 分數</h4>
+                                <p class="mb-0">請檢查數據是否完整或稍後再試。</p>
                             </div>
                         </div>
-        </div>
+                    </div>
     {% endif %}
 
                 <!-- Action Buttons -->
                 <div class="d-flex justify-content-between mt-4">
                     <div>
                         <a href="{{ url_for('main_app_page') }}" class="btn btn-secondary">
-                            <i class="fas fa-arrow-left mr-2"></i>Back to Main Application
+                            <i class="fas fa-arrow-left mr-2"></i>返回主應用程式
                         </a>
                     </div>
                     <div>
-                        <a href="https://launch.smarthealthit.org/launcher?launch_uri=http%3A%2F%2F127.0.0.1%3A8080%2Flaunch&iss=https%3A%2F%2Flaunch.smarthealthit.org%2Fv%2Fr4%2Ffhir&fhir_ver=4" 
-                           class="btn btn-outline-primary">
-                            <i class="fas fa-exchange-alt mr-2"></i>
-                            Return to EHR to Select Other Patients
+                        <a href="{{ url_for('main_page') }}" class="btn btn-outline-info">
+                            <i class="fas fa-tachometer-alt mr-2"></i>簡化版界面
+                        </a>
+                        <a href="{{ url_for('launch_cerner_sandbox') }}" class="btn btn-outline-primary ml-2">
+                            <i class="fas fa-vial mr-2"></i>Cerner 沙盒測試
                         </a>
                     </div>
                 </div>
@@ -422,7 +416,36 @@
     </div>
 {% endblock %}
 
-<!-- Custom CSS for Enhanced Risk Level Styling -->
+{% block scripts %}
+<script>
+// Add some interactive features for PRECISE-DAPT
+document.addEventListener('DOMContentLoaded', function() {
+    // Highlight components with scores
+    const scoredRows = document.querySelectorAll('tr.table-warning');
+    scoredRows.forEach(row => {
+        row.addEventListener('mouseenter', function() {
+            this.style.backgroundColor = '#fff3cd';
+            this.style.transform = 'scale(1.02)';
+            this.style.transition = 'all 0.2s';
+        });
+        row.addEventListener('mouseleave', function() {
+            this.style.backgroundColor = '';
+            this.style.transform = '';
+        });
+    });
+    
+    // Add tooltips for score ranges
+    const scoreElements = document.querySelectorAll('.badge');
+    scoreElements.forEach(badge => {
+        if (badge.textContent.includes('分')) {
+            badge.setAttribute('title', 'PRECISE-DAPT 評分系統: 0-100分');
+        }
+    });
+});
+</script>
+{% endblock %}
+
+<!-- Custom CSS for Enhanced PRECISE-DAPT Styling -->
 <style>
     /* Enhanced styling for high bleeding risk alert */
     .alert-danger {
@@ -449,13 +472,41 @@
         100% { transform: scale(1); }
     }
     
-    /* Enhanced warning styling for medium risk */
+    /* Enhanced warning styling for moderate risk */
     .alert-warning {
         background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%) !important;
         border: 2px solid #d39e00 !important;
         color: #212529 !important;
         font-weight: 500;
         box-shadow: 0 4px 8px rgba(255, 193, 7, 0.3) !important;
+    }
+    
+    /* Enhanced info styling for low risk */
+    .alert-info {
+        background: linear-gradient(135deg, #17a2b8 0%, #138496 100%) !important;
+        border: 2px solid #117a8b !important;
+        color: white !important;
+        font-weight: 500;
+        box-shadow: 0 4px 8px rgba(23, 162, 184, 0.3) !important;
+    }
+    
+    .alert-info .alert-heading {
+        color: white !important;
+        text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+    }
+    
+    /* Enhanced success styling for very low risk */
+    .alert-success {
+        background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%) !important;
+        border: 2px solid #1c7430 !important;
+        color: white !important;
+        font-weight: 500;
+        box-shadow: 0 4px 8px rgba(40, 167, 69, 0.3) !important;
+    }
+    
+    .alert-success .alert-heading {
+        color: white !important;
+        text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
     }
     
     /* Badge styling enhancements */
@@ -472,5 +523,37 @@
     .badge-warning {
         background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%) !important;
         box-shadow: 0 2px 4px rgba(255, 193, 7, 0.3);
+    }
+    
+    .badge-info {
+        background: linear-gradient(135deg, #17a2b8 0%, #138496 100%) !important;
+        box-shadow: 0 2px 4px rgba(23, 162, 184, 0.3);
+    }
+    
+    .badge-success {
+        background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%) !important;
+        box-shadow: 0 2px 4px rgba(40, 167, 69, 0.3);
+    }
+    
+    /* Table enhancements */
+    .table-hover tbody tr:hover {
+        background-color: #f8f9fa;
+    }
+    
+    .table-warning {
+        background-color: #fff3cd !important;
+    }
+    
+    /* PRECISE-DAPT specific styling */
+    .card-header.bg-primary {
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%) !important;
+    }
+    
+    .card-header.bg-success {
+        background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%) !important;
+    }
+    
+    .card-header.bg-info {
+        background: linear-gradient(135deg, #17a2b8 0%, #138496 100%) !important;
     }
 </style>

@@ -1,239 +1,105 @@
 {% extends "layout.html" %}
 
-{% macro human_readable_time(d_module, timestamp) -%}
-    {{ d_module.datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S') if timestamp else 'N/A' }}
-{%- endmacro %}
+{% block title %}SMART FHIR Application{% endblock %}
 
 {% block content %}
-<div class="container-fluid">
-    <!-- Header Section -->
+<div class="container mt-4">
     <div class="row mb-4">
         <div class="col-12">
-            <div class="card bg-gradient-primary text-white">
-                <div class="card-body">
-                    <div class="row align-items-center">
-                        <div class="col-lg-8">
-                            <h2 class="mb-1">
-                                <i class="fas fa-heartbeat"></i> {{ title }}
-                            </h2>
-                            {% if current_user.is_authenticated %}
-                                <p class="mb-0">
-                                    <i class="fas fa-user"></i> Welcome, <strong>{{ current_user.name or 'User' }}</strong>
-                                    {% if current_user.email %}
-                                        <span class="ml-2"><i class="fas fa-envelope"></i> {{ current_user.email }}</span>
-                                    {% endif %}
-                                </p>
-                            {% endif %}
-                        </div>
-                        <div class="col-lg-4 text-right">
-                            <div class="btn-group" role="group">
-                                <a href="{{ url_for('performance_dashboard') }}" class="btn btn-outline-light btn-sm">
-                                    <i class="fas fa-tachometer-alt"></i> Performance Monitoring
-                                </a>
-                                <a href="{{ url_for('logout') }}" class="btn btn-outline-light btn-sm">
-                                    <i class="fas fa-sign-out-alt"></i> Logout
-                                </a>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            <h1 class="display-4">SMART FHIR 應用程式</h1>
+            <p class="lead">出血風險評估與患者數據管理</p>
         </div>
     </div>
 
-    {% if current_user.is_authenticated %}
-        <!-- Patient Information Section -->
-        {% if session.patient_id %}
-            <div class="row mb-4">
-                <div class="col-lg-8">
-                    <div class="card">
-                        <div class="card-header bg-info text-white">
-                            <h5 class="mb-0">
-                                <i class="fas fa-user-injured"></i> Patient Information
-                            </h5>
-                        </div>
-                        <div class="card-body">
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <p><strong>Patient ID:</strong> <code>{{ session.patient_id }}</code></p>
-                                    <p><strong>Name:</strong> {{ patient_name_display or 'Not provided' }}</p>
-                                </div>
-                                <div class="col-md-6">
-                                    <div class="text-right">
-                                        <a href="{{ url_for('calculate_risk_ui_page') }}" class="btn btn-primary">
-                                            <i class="fas fa-calculator"></i> Calculate Bleeding Risk
-                                        </a>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            {% if patient_data and patient_data.id %}
-                                <div class="mt-3">
-                                    <div class="card bg-light">
-                                        <div class="card-header">
-                                            <h6 class="mb-0">
-                                                <a data-toggle="collapse" href="#patientDetails" role="button" aria-expanded="false">
-                                                    <i class="fas fa-chevron-down"></i> Detailed Patient Data (FHIR Resource)
-                                                </a>
-                                            </h6>
-                                        </div>
-                                        <div class="collapse" id="patientDetails">
-                                            <div class="card-body">
-                                                <pre class="small">{{ patient_data | tojson(indent=2) }}</pre>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            {% endif %}
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Quick Actions -->
-                <div class="col-lg-4">
-                    <div class="card">
-                        <div class="card-header bg-secondary text-white">
-                            <h5 class="mb-0">
-                                <i class="fas fa-tools"></i> Quick Actions
-                            </h5>
-                        </div>
-                        <div class="card-body">
-                            <div class="d-grid gap-2">
-                                <a href="{{ url_for('calculate_risk_ui_page') }}" class="btn btn-success btn-block">
-                                    <i class="fas fa-heartbeat"></i> Bleeding Risk Assessment
-                                </a>
-                                
-                                {% if session.get('fhir_server_url') %}
-                                    {% if 'smarthealthit.org' in session.get('fhir_server_url', '') %}
-                                        <a href="https://launch.smarthealthit.org/launcher?iss={{ session.get('fhir_server_url') }}" 
-                                           class="btn btn-outline-primary btn-block">
-                                            <i class="fas fa-exchange-alt"></i> Switch Patient
-                                        </a>
-                                    {% else %}
-                                        <div class="dropdown">
-                                            <button class="btn btn-outline-primary btn-block dropdown-toggle" 
-                                                    type="button" id="switchPatientDropdown" 
-                                                    data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                                                <i class="fas fa-exchange-alt"></i> Switch Patient
-                                            </button>
-                                            <div class="dropdown-menu w-100" aria-labelledby="switchPatientDropdown">
-                                                <a class="dropdown-item" href="{{ url_for('logout') }}">
-                                                    <i class="fas fa-sign-out-alt"></i> Logout and Restart
-                                                </a>
-                                                <div class="dropdown-divider"></div>
-                                                <h6 class="dropdown-header">Test Options</h6>
-                                                <a class="dropdown-item" href="https://launch.smarthealthit.org/launcher?iss=https://launch.smarthealthit.org/v/r4/fhir&launch=eyJhIjoiMSJ9">
-                                                    <i class="fas fa-vial"></i> SMART Health IT Sandbox
-                                                </a>
-                                            </div>
-                                        </div>
-                                    {% endif %}
-                                {% endif %}
-                                
-                                <a href="{{ url_for('performance_dashboard') }}" class="btn btn-outline-info btn-block">
-                                    <i class="fas fa-chart-line"></i> System Performance Monitoring
-                                </a>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        {% else %}
-            <!-- No Patient Selected -->
-            <div class="row">
-                <div class="col-12">
-                    <div class="card border-warning">
-                        <div class="card-header bg-warning text-dark">
-                            <h5 class="mb-0">
-                                <i class="fas fa-exclamation-triangle"></i> No Patient Selected
-                            </h5>
-                        </div>
-                        <div class="card-body">
-                            <p>No patient scenario is currently selected. Please restart the application through one of the following methods:</p>
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <div class="card">
-                                        <div class="card-body text-center">
-                                            <h6>From EHR System</h6>
-                                            <p class="text-muted small">Start the application through your electronic health record (EHR) system</p>
-                                            <a href="{{ url_for('logout') }}" class="btn btn-outline-secondary">
-                                                <i class="fas fa-sign-out-alt"></i> Restart
-                                            </a>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-md-6">
-                                    <div class="card">
-                                        <div class="card-body text-center">
-                                            <h6>Test Environment</h6>
-                                            <p class="text-muted small">Use the SMART Health IT test environment</p>
-                                            <a href="https://launch.smarthealthit.org/launcher?iss=https://launch.smarthealthit.org/v/r4/fhir&launch=eyJhIjoiMSJ9" 
-                                               class="btn btn-outline-primary">
-                                                <i class="fas fa-vial"></i> Test Start
-                                            </a>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        {% endif %}
-
-        <!-- System Information Section -->
-        <div class="row">
-            <div class="col-12">
+    <!-- Patient Information Section -->
+    {% if session.get('fhir_data') and session.fhir_data.get('patient') %}
+        <div class="row mb-4">
+            <div class="col-lg-8">
                 <div class="card">
-                    <div class="card-header">
+                    <div class="card-header bg-info text-white">
                         <h5 class="mb-0">
-                            <i class="fas fa-info-circle"></i> System Information
-                            <button class="btn btn-sm btn-outline-secondary float-right" type="button" 
-                                    data-toggle="collapse" data-target="#systemInfo" aria-expanded="false">
-                                <i class="fas fa-chevron-down"></i> Show/Hide
-                            </button>
+                            <i class="fas fa-user-injured"></i> 患者資訊
                         </h5>
                     </div>
-                    <div class="collapse" id="systemInfo">
-                        <div class="card-body">
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <h6>Authentication Information</h6>
-                                    <table class="table table-sm">
-                                        <tr>
-                                            <td><strong>Access Token:</strong></td>
-                                            <td><code class="small">{{ session.access_token[:30] if session.access_token else 'N/A' }}...</code></td>
-                                        </tr>
-                                        <tr>
-                                            <td><strong>FHIR Server:</strong></td>
-                                            <td><code class="small">{{ session.fhir_server_url or 'N/A' }}</code></td>
-                                        </tr>
-                                        <tr>
-                                            <td><strong>Scope:</strong></td>
-                                            <td><code class="small">{{ session.scopes_granted or 'N/A' }}</code></td>
-                                        </tr>
-                                    </table>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <p><strong>Patient ID:</strong> <code>{{ session.fhir_data.patient }}</code></p>
+                                <p><strong>姓名:</strong> {{ patient_name_display or '未提供' }}</p>
+                                <p><strong>FHIR 伺服器:</strong> <small class="text-muted">{{ session.fhir_data.server }}</small></p>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="text-right">
+                                    <a href="{{ url_for('calculate_risk') }}" class="btn btn-primary btn-lg">
+                                        <i class="fas fa-calculator"></i> 計算出血風險
+                                    </a>
                                 </div>
-                                <div class="col-md-6">
-                                    <h6>ID Token Information</h6>
-                                    {% if session.get('id_token_claims') %}
-                                        <table class="table table-sm">
-                                            <tr>
-                                                <td><strong>User ID:</strong></td>
-                                                <td><code class="small">{{ session.get('id_token_claims', {}).get('sub', 'N/A') }}</code></td>
-                                            </tr>
-                                            <tr>
-                                                <td><strong>fhirUser:</strong></td>
-                                                <td><code class="small">{{ session.get('id_token_claims', {}).get('fhirUser', session.get('id_token_claims', {}).get('profile', 'N/A')) }}</code></td>
-                                            </tr>
-                                            <tr>
-                                                <td><strong>Expiration Time:</strong></td>
-                                                <td><code class="small">{{ human_readable_time(dt_module, session.get('id_token_claims', {}).get('exp')) }}</code></td>
-                                            </tr>
-                                        </table>
-                                    {% else %}
-                                        <p class="text-muted">No ID Token Information</p>
-                                    {% endif %}
+                            </div>
+                        </div>
+            
+            {% if patient_data and patient_data.get('id') %}
+                        <div class="mt-3">
+                            <div class="card bg-light">
+                                <div class="card-header">
+                                    <h6 class="mb-0">
+                                        <a data-toggle="collapse" href="#patientDetails" role="button" aria-expanded="false">
+                                            <i class="fas fa-chevron-down"></i> 詳細患者數據 (FHIR Resource)
+                                        </a>
+                                    </h6>
+                                </div>
+                                <div class="collapse" id="patientDetails">
+                                    <div class="card-body">
+                                        <pre class="small">{{ patient_data | tojson(indent=2) }}</pre>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+            {% endif %}
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Quick Actions -->
+            <div class="col-lg-4">
+                <div class="card">
+                    <div class="card-header bg-secondary text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-tools"></i> 快速操作
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-grid gap-2">
+                            <a href="{{ url_for('calculate_risk') }}" class="btn btn-success btn-block mb-2">
+                                <i class="fas fa-heartbeat"></i> 出血風險評估
+                            </a>
+                            
+                            <a href="{{ url_for('main_page') }}" class="btn btn-outline-info btn-block mb-2">
+                                <i class="fas fa-tachometer-alt"></i> 簡化版界面
+                            </a>
+                            
+                            <div class="dropdown">
+                                <button class="btn btn-outline-primary btn-block dropdown-toggle" 
+                                        type="button" id="switchPatientDropdown" 
+                                        data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                    <i class="fas fa-exchange-alt"></i> 變更上下文
+                                </button>
+                                <div class="dropdown-menu w-100" aria-labelledby="switchPatientDropdown">
+                                    <h6 class="dropdown-header">EHR 操作</h6>
+                                    
+                                    <a class="dropdown-item" href="{{ url_for('launch_cerner_sandbox') }}">
+                                        <i class="fas fa-vial"></i> Cerner 沙盒測試
+                                    </a>
+                                    
+                                    <div class="dropdown-divider"></div>
+                                    
+                                    <a class="dropdown-item" href="{{ url_for('logout') }}">
+                                        <i class="fas fa-sign-out-alt"></i> 登出並返回 EHR
+                                    </a>
+
+                                    <div class="dropdown-divider"></div>
+                                    <small class="dropdown-item-text text-muted">
+                                        使用相應選項來切換患者或重新啟動應用程式
+                                    </small>
                                 </div>
                             </div>
                         </div>
@@ -242,79 +108,129 @@
             </div>
         </div>
     {% else %}
+        <!-- No Patient Selected -->
         <div class="row">
             <div class="col-12">
-                <div class="alert alert-warning" role="alert">
-                    <h4><i class="fas fa-sign-in-alt"></i> Please Log In</h4>
-                    <p>Please start the application through your electronic health record (EHR) system to log in.</p>
-                    <a href="{{ url_for('index') }}" class="btn btn-primary">
-                        <i class="fas fa-home"></i> Back to Home
-                    </a>
+                <div class="card border-warning">
+                    <div class="card-header bg-warning text-dark">
+                        <h5 class="mb-0">
+                            <i class="fas fa-exclamation-triangle"></i> 未選擇患者
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <p>當前未選擇患者情境。請通過以下方法之一重新啟動應用程式：</p>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="card">
+                                    <div class="card-body text-center">
+                                        <h6>從 EHR 系統</h6>
+                                        <p class="text-muted small">透過您的電子健康記錄 (EHR) 系統啟動應用程式</p>
+                                        <a href="{{ url_for('logout') }}" class="btn btn-outline-secondary">
+                                            <i class="fas fa-sign-out-alt"></i> 重新啟動
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="card">
+                                    <div class="card-body text-center">
+                                        <h6>測試環境</h6>
+                                        <p class="text-muted small">使用 Cerner 沙盒測試環境</p>
+                                        <a href="{{ url_for('launch_cerner_sandbox') }}" class="btn btn-outline-primary">
+                                            <i class="fas fa-vial"></i> 測試啟動
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     {% endif %}
-</div>
-
-<!-- Page bottom performance metrics (if available) -->
-{% if PERFORMANCE_OPTIMIZER_AVAILABLE %}
-<div class="row mt-4">
-    <div class="col-12">
-        <div class="alert alert-info alert-dismissible fade show" role="alert">
-            <i class="fas fa-rocket"></i> <strong>Performance Optimizer Enabled</strong> - 
-            System is using intelligent caching, batch processing, and query optimization techniques to improve performance.
-            <a href="{{ url_for('performance_dashboard') }}" class="alert-link">View Detailed Statistics</a>
-            <button type="button" class="close" data-dismiss="alert" aria-label="Close">
-                <span aria-hidden="true">&times;</span>
-            </button>
+    
+    <!-- System Information Section -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-info-circle"></i> 系統資訊
+                        <button class="btn btn-sm btn-outline-secondary float-right" type="button" 
+                                data-toggle="collapse" data-target="#systemInfo" aria-expanded="false">
+                            <i class="fas fa-chevron-down"></i> 顯示/隱藏
+                        </button>
+                    </h5>
+                </div>
+                <div class="collapse" id="systemInfo">
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6>驗證資訊</h6>
+                                <table class="table table-sm">
+                                    <tr>
+                                        <td><strong>Access Token:</strong></td>
+                                        <td><code class="small">{{ session.fhir_data.token[:30] if session.get('fhir_data', {}).get('token') else 'N/A' }}...</code></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>FHIR Server:</strong></td>
+                                        <td><code class="small">{{ session.fhir_data.server or 'N/A' if session.get('fhir_data') else 'N/A' }}</code></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Patient ID:</strong></td>
+                                        <td><code class="small">{{ session.fhir_data.patient or 'N/A' if session.get('fhir_data') else 'N/A' }}</code></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Client ID:</strong></td>
+                                        <td><code class="small">{{ session.fhir_data.client_id or 'N/A' if session.get('fhir_data') else 'N/A' }}</code></td>
+                                    </tr>
+                                </table>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>應用程式狀態</h6>
+                                <table class="table table-sm">
+                                    <tr>
+                                        <td><strong>Session 有效:</strong></td>
+                                        <td>
+                                            {% if session.get('fhir_data') %}
+                                                <span class="badge badge-success">是</span>
+                                            {% else %}
+                                                <span class="badge badge-danger">否</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>使用 fhirclient:</strong></td>
+                                        <td><span class="badge badge-info">是</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>支援的資源:</strong></td>
+                                        <td><small>Patient, Observation, Condition, MedicationRequest, Procedure</small></td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
-{% endif %}
-
 {% endblock %}
 
-{% block extra_css %}
-<style>
-.bg-gradient-primary {
-    background: linear-gradient(45deg, #007bff, #0056b3);
-}
-
-.card {
-    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
-    border: 1px solid rgba(0, 0, 0, 0.125);
-    transition: box-shadow 0.15s ease-in-out;
-}
-
-.card:hover {
-    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
-}
-
-.btn-block {
-    margin-bottom: 0.5rem;
-}
-
-pre {
-    max-height: 300px;
-    overflow-y: auto;
-    background-color: #f8f9fa;
-    border: 1px solid #e9ecef;
-    border-radius: 0.25rem;
-}
-
-code {
-    background-color: #f8f9fa;
-    padding: 0.125rem 0.25rem;
-    border-radius: 0.25rem;
-}
-
-.table-sm th, .table-sm td {
-    padding: 0.3rem;
-    border-top: 1px solid #dee2e6;
-}
-
-.dropdown-menu {
-    min-width: 100%;
-}
-</style>
+{% block scripts %}
+<script>
+    // Auto-refresh token if needed
+    setInterval(function() {
+        // Check if session is still valid by making a lightweight request
+        fetch('/api/calculate_risk', {method: 'HEAD'})
+        .then(response => {
+            if (response.status === 400) {
+                // Session expired, show warning
+                console.warn('Session may have expired');
+            }
+        })
+        .catch(error => console.log('Session check error:', error));
+    }, 300000); // Check every 5 minutes
+</script>
 {% endblock %}

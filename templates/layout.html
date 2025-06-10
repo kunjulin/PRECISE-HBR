@@ -3,248 +3,71 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ title }} - SMART FHIR App</title>
+    <title>{% block title %}SMART FHIR App{% endblock %}</title>
     
     <!-- Bootstrap CSS -->
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     
-    <!-- Font Awesome -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
     
     <!-- Custom Styles -->
     <style>
         body { 
-            padding-top: 5rem; 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f8f9fa;
         }
-        .flash-messages .alert { 
-            margin-bottom: 1rem; 
-        }
-        .navbar-brand {
-            font-weight: 600;
-        }
-        .nav-link {
-            font-weight: 500;
-        }
-        .navbar-nav .nav-link:hover {
-            background-color: rgba(255, 255, 255, 0.1);
-            border-radius: 0.25rem;
-        }
-        .container {
-            max-width: 1200px;
-        }
-        .btn {
-            border-radius: 0.375rem;
+        .navbar {
+            box-shadow: 0 2px 4px rgba(0,0,0,.1);
         }
         .card {
+            border: none;
             border-radius: 0.5rem;
-            box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+        }
+        .logout-btn {
+            color: rgba(255,255,255,.55);
+            transition: color .15s ease-in-out;
+        }
+        .logout-btn:hover {
+            color: rgba(255,255,255,.75);
+            text-decoration: none;
         }
     </style>
     
-    {% block extra_css %}{% endblock %}
 </head>
 <body>
     <!-- Navigation -->
-    <nav class="navbar navbar-expand-md navbar-dark bg-dark fixed-top">
-        <div class="container">
-            <a class="navbar-brand" href="{{ url_for('index') }}">
-                <i class="fas fa-heartbeat text-danger"></i>
+    <nav class="navbar navbar-expand-md navbar-dark bg-dark mb-4">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-heart-pulse text-danger"></i>
                 FHIR Bleeding Risk Calculator
             </a>
-            
-            <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarNav" 
-                    aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav mr-auto">
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('index') }}">
-                            <i class="fas fa-home"></i> Home
-                        </a>
-                    </li>
-                    {% if current_user.is_authenticated %}
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('main_app_page') }}">
-                                <i class="fas fa-tachometer-alt"></i> Main App
-                            </a>
-                        </li>
-                        {% if session.patient_id %}
-                            <li class="nav-item">
-                                <a class="nav-link" href="{{ url_for('calculate_risk_ui_page') }}">
-                                    <i class="fas fa-calculator"></i> Risk Calculator
-                                </a>
-                            </li>
-                        {% endif %}
-                        <!-- Performance Dashboard Link -->
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('performance_dashboard') }}">
-                                <i class="fas fa-chart-line"></i> Performance Monitoring
-                            </a>
-                        </li>
-                    {% endif %}
-                </ul>
-                
-                <!-- User Menu -->
-                <ul class="navbar-nav ml-auto">
-                    {% if current_user.is_authenticated %}
-                        <!-- User Info Dropdown -->
-                        <li class="nav-item dropdown">
-                            <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" 
-                               data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                                <i class="fas fa-user-circle"></i>
-                                {{ current_user.name or 'User' }}
-                            </a>
-                            <div class="dropdown-menu dropdown-menu-right" aria-labelledby="userDropdown">
-                                <h6 class="dropdown-header">
-                                    <i class="fas fa-info-circle"></i> User Information
-                                </h6>
-                                <span class="dropdown-item-text">
-                                    <small>
-                                        <i class="fas fa-envelope"></i> 
-                                        {{ current_user.email or 'Not provided' }}
-                                    </small>
-                                </span>
-                                {% if session.patient_id %}
-                                    <span class="dropdown-item-text">
-                                        <small>
-                                            <i class="fas fa-user-injured"></i> 
-                                            Patient: {{ session.patient_id }}
-                                        </small>
-                                    </span>
-                                {% endif %}
-                                <div class="dropdown-divider"></div>
-                                <a class="dropdown-item" href="{{ url_for('performance_dashboard') }}">
-                                    <i class="fas fa-chart-bar"></i> Performance Dashboard
-                                </a>
-                                <div class="dropdown-divider"></div>
-                                <a class="dropdown-item text-danger" href="{{ url_for('logout') }}">
-                                    <i class="fas fa-sign-out-alt"></i> Logout
-                                </a>
-                            </div>
-                        </li>
-                    {% else %}
-                        <li class="nav-item">
-                            <span class="navbar-text">
-                                <i class="fas fa-info-circle"></i> 
-                                Please login through EHR system
-                            </span>
-                        </li>
-                    {% endif %}
-                </ul>
+            <div class="ms-auto">
+                 <a href="{{ url_for('logout') }}" class="logout-btn">
+                    <i class="fas fa-sign-out-alt"></i> Logout & Relaunch
+                </a>
             </div>
         </div>
     </nav>
 
     <!-- Main Content -->
     <main role="main" class="container">
-        <!-- Flash Messages -->
-        <div class="flash-messages">
-            {% with messages = get_flashed_messages(with_categories=true) %}
-                {% if messages %}
-                    {% for category, message in messages %}
-                        <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
-                            {% if category == 'success' %}
-                                <i class="fas fa-check-circle"></i>
-                            {% elif category == 'warning' %}
-                                <i class="fas fa-exclamation-triangle"></i>
-                            {% elif category == 'danger' or category == 'error' %}
-                                <i class="fas fa-exclamation-circle"></i>
-                            {% else %}
-                                <i class="fas fa-info-circle"></i>
-                            {% endif %}
-                            {{ message }}
-                            <button type="button" class="close" data-dismiss="alert" aria-label="Close">
-                                <span aria-hidden="true">&times;</span>
-                            </button>
-                        </div>
-                    {% endfor %}
-                {% endif %}
-            {% endwith %}
-        </div>
-        
-        <!-- Page Content -->
         {% block content %}{% endblock %}
     </main>
 
     <!-- Footer -->
-    <footer class="bg-light mt-5 py-4">
+    <footer class="mt-5 py-4 text-center text-muted">
         <div class="container">
-            <div class="row">
-                <div class="col-md-6">
-                    <h6 class="text-muted">
-                        <i class="fas fa-heartbeat text-danger"></i>
-                        SMART on FHIR Bleeding Risk Calculator
-                    </h6>
-                    <p class="text-muted small">
-                        Clinical Decision Support System based on ARC-HBR Standards
-                    </p>
-                </div>
-                <div class="col-md-6 text-right">
-                    <div class="d-flex justify-content-end align-items-center">
-                        {% if current_user.is_authenticated and PERFORMANCE_OPTIMIZER_AVAILABLE %}
-                            <span class="badge badge-success mr-2">
-                                <i class="fas fa-rocket"></i> Performance Optimization Enabled
-                            </span>
-                        {% endif %}
-                        <small class="text-muted">
-                            <i class="fas fa-clock"></i>
-                            {{ moment().format('YYYY-MM-DD HH:mm:ss') if moment else '' }}
-                        </small>
-                    </div>
-                </div>
-            </div>
-            <hr class="my-3">
-            <div class="row">
-                <div class="col-12 text-center">
-                    <small class="text-muted">
-                        Compliant with SMART on FHIR and CDS Hooks Standards | 
-                        <a href="https://www.hl7.org/fhir/" target="_blank" class="text-muted">FHIR R4</a> |
-                        <a href="https://cds-hooks.org/" target="_blank" class="text-muted">CDS Hooks 1.0</a>
-                    </small>
-                </div>
-            </div>
+            <small>
+                Compliant with SMART on FHIR and HL7 FHIR R4 Standards.
+            </small>
         </div>
     </footer>
 
-    <!-- JavaScript Libraries -->
-    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.3/dist/umd/popper.min.js"></script>
-    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
-    
-    <!-- Performance Optimizer Status -->
-    {% if current_user.is_authenticated and PERFORMANCE_OPTIMIZER_AVAILABLE %}
-    <script>
-        console.log('🚀 FHIR Performance Optimizer is active');
-    </script>
-    {% endif %}
-    
-    <!-- Custom JavaScript -->
-    <script>
-        // Auto-dismiss alerts after 5 seconds
-        $(document).ready(function() {
-            setTimeout(function() {
-                $('.alert').alert('close');
-            }, 5000);
-            
-            // Initialize tooltips
-            $('[data-toggle="tooltip"]').tooltip();
-        });
-        
-        // Navigation active state
-        $(function() {
-            var current = location.pathname;
-            $('.navbar-nav .nav-link').each(function() {
-                var $this = $(this);
-                if ($this.attr('href') === current) {
-                    $this.addClass('active');
-                }
-            });
-        });
-    </script>
-    
-    {% block extra_js %}{% endblock %}
+    <!-- Bootstrap Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Page-specific scripts -->
+    {% block scripts %}{% endblock %}
 </body>
 </html>

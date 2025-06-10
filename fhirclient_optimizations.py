@@ -679,12 +679,28 @@ def get_platelet_optimized(patient_id, loinc_codes, smart_client_id, get_platele
     return None
 
 def get_egfr_value_optimized(patient_id, age, sex, loinc_codes_creatinine, loinc_codes_egfr, smart_client_id, get_egfr_value_fallback):
-    """Optimized eGFR calculation using fhirclient (Phase 1)"""
+    """Optimized eGFR fetching/calculation using fhirclient (Phase 1) - PRIORITIZES DIRECT eGFR"""
     if not FHIRCLIENT_AVAILABLE:
         logging.debug("fhirclient not available, falling back to manual implementation")
         return get_egfr_value_fallback(patient_id, age, sex)
     
-    # Attempt 1: Calculate from optimized Creatinine
+    # Attempt 1: Try to get direct eGFR observation using fhirclient FIRST (PREFERRED METHOD)
+    obs_json = get_observation_optimized(patient_id, loinc_codes_egfr, smart_client_id, lambda x: None)
+    if obs_json:
+        try:
+            value_data = obs_json.get("valueQuantity")
+            if value_data:
+                value = value_data.get("value")
+                unit = value_data.get("unit", "")
+                direct_egfr_val = float(value)
+                logging.info(f"✅ Using directly fetched eGFR value {direct_egfr_val} (Unit: {unit}) for patient {patient_id} via fhirclient")
+                return direct_egfr_val
+        except Exception as e:
+            logging.error(f"Error processing direct eGFR value for patient {patient_id}: {e}")
+    else:
+        logging.info(f"No direct eGFR measurement found for patient {patient_id}. Will attempt calculation from Creatinine.")
+    
+    # Attempt 2: Calculate from optimized Creatinine (FALLBACK METHOD)
     from fhirclient_optimizations import get_creatinine_optimized
     cr_value = get_creatinine_optimized(patient_id, loinc_codes_creatinine, smart_client_id, lambda x: None)
     
@@ -708,26 +724,17 @@ def get_egfr_value_optimized(patient_id, age, sex, loinc_codes_creatinine, loinc
             
             eGFR_calc = 142 * term2 * term3 * age_factor * sex_factor
             
-            logging.info(f"Calculated eGFR (CKD-EPI 2021 optimized) {eGFR_calc:.2f} from Creatinine {cr_value} for patient {patient_id}")
+            logging.info(f"📊 Calculated eGFR (CKD-EPI 2021 optimized) {eGFR_calc:.2f} from Creatinine {cr_value} for patient {patient_id}")
             return float(eGFR_calc)
             
         except Exception as e:
             logging.error(f"Error in optimized eGFR calculation for patient {patient_id}: {e}")
-            # Fall through to direct eGFR fetch
     
-    # Attempt 2: Try to get direct eGFR observation using fhirclient
-    obs_json = get_observation_optimized(patient_id, loinc_codes_egfr, smart_client_id, lambda x: None)
-    if obs_json:
-        try:
-            value_data = obs_json.get("valueQuantity")
-            if value_data:
-                value = value_data.get("value")
-                unit = value_data.get("unit", "")
-                direct_egfr_val = float(value)
-                logging.info(f"Using directly fetched eGFR value {direct_egfr_val} (Unit: {unit}) for patient {patient_id} via fhirclient")
-                return direct_egfr_val
-        except Exception as e:
-            logging.error(f"Error processing direct eGFR value for patient {patient_id}: {e}")
+    # Log why calculation was not possible
+    if not cr_is_valid:
+        logging.warning(f"❌ Creatinine value '{cr_value}' is invalid for patient {patient_id}. Cannot calculate eGFR.")
+    elif not age_is_valid or not sex_is_valid:
+        logging.warning(f"❌ Age '{age}' or Sex '{sex}' is invalid for eGFR calculation for patient {patient_id}.")
     
     # Fallback to manual implementation
     logging.debug("Optimized eGFR methods failed, falling back to manual implementation")
