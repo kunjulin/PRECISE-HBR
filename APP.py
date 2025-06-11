@@ -439,15 +439,13 @@ def calculate_risk():
         # Get risk categories from config
         risk_categories = CDSS_CONFIG.get('risk_categories', {})
         
-        # Determine risk category based on PRECISE-DAPT thresholds
+        # Determine risk category based on PRECISE-DAPT thresholds (3-tier system)
         if total_score >= risk_categories.get('high_risk', {}).get('min_score', 25):
             risk_category = 'High Bleeding Risk'
         elif total_score >= risk_categories.get('moderate_risk', {}).get('min_score', 16):
             risk_category = 'Moderate Bleeding Risk'
-        elif total_score >= risk_categories.get('low_risk', {}).get('min_score', 8):
-            risk_category = 'Low Bleeding Risk'
         else:
-            risk_category = 'Very Low Bleeding Risk'
+            risk_category = 'Low Bleeding Risk'
         
         # Create detailed calculation structure for the UI (PRECISE-DAPT format)
         calculation_details = {
@@ -557,7 +555,7 @@ def calculate_risk_api():
         # 3. Calculate risk components and total score
         components, total_score = calculate_risk_components(raw_data, demographics)
 
-        # 4. Determine risk level based on PRECISE-DAPT thresholds from config
+        # 4. Determine risk level based on PRECISE-DAPT thresholds from config (3-tier system)
         risk_categories = CDSS_CONFIG.get('risk_categories', {})
         
         if total_score >= risk_categories.get('high_risk', {}).get('min_score', 25):
@@ -568,14 +566,10 @@ def calculate_risk_api():
             risk_level = 'Moderate Bleeding Risk (PRECISE-DAPT 16-24)'
             recommendation = risk_categories.get('moderate_risk', {}).get('recommendation',
                 'Moderate bleeding risk. Standard DAPT duration with careful monitoring.')
-        elif total_score >= risk_categories.get('low_risk', {}).get('min_score', 8):
-            risk_level = 'Low Bleeding Risk (PRECISE-DAPT 8-15)'
+        else:
+            risk_level = 'Low Bleeding Risk (PRECISE-DAPT 0-15)'
             recommendation = risk_categories.get('low_risk', {}).get('recommendation',
                 'Low bleeding risk. Standard DAPT duration (12 months) recommended.')
-        else:
-            risk_level = 'Very Low Bleeding Risk (PRECISE-DAPT 0-7)'
-            recommendation = risk_categories.get('very_low_risk', {}).get('recommendation',
-                'Very low bleeding risk. Extended DAPT duration may be considered.')
 
         # 5. Assemble the final response
         response_data = {
