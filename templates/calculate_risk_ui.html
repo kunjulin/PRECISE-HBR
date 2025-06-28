@@ -66,7 +66,15 @@
                                     <table class="table table-borderless">
                                         <tbody>
                                             <tr>
-                                                <th class="w-40">Age:</th>
+                                                <th class="w-40">Patient ID:</th>
+                                                <td>
+                                                    <span class="badge badge-primary">
+                                                        <i class="fas fa-id-card mr-1"></i>{{ patient_id }}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <th>Age:</th>
                                                 <td>
                                                     <span class="badge badge-{% if calculation_details.score_details.age_score_component > 0 %}warning{% else %}secondary{% endif %}">
                                                         {{ calculation_details.age if calculation_details.age is not none else 'Unknown' }} years
@@ -333,6 +341,66 @@
                         </div>
                     {% endif %}
 
+                    <!-- User Feedback Section -->
+                    <div class="card shadow-sm mb-4">
+                        <div class="card-header bg-light">
+                            <h5 class="mb-0">
+                                <i class="fas fa-comment-dots mr-2"></i>
+                                計算結果回饋 (Result Feedback)
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <p class="text-muted mb-3">您覺得這個出血風險計算結果準確嗎？請給我們您的回饋意見：</p>
+                            <div id="feedbackSection">
+                                <div class="d-flex justify-content-center mb-3">
+                                    <button type="button" id="thumbsUpBtn" class="btn btn-outline-success btn-lg mx-2" 
+                                            onclick="submitFeedback('thumbs_up')" title="計算結果準確">
+                                        <i class="fas fa-thumbs-up mr-2"></i>
+                                        準確 (讚)
+                                    </button>
+                                    <button type="button" id="thumbsDownBtn" class="btn btn-outline-danger btn-lg mx-2" 
+                                            onclick="submitFeedback('thumbs_down')" title="計算結果不準確">
+                                        <i class="fas fa-thumbs-down mr-2"></i>
+                                        不準確 (倒讚)
+                                    </button>
+                                </div>
+                                
+                                <!-- Optional Comment Section (Initially Hidden) -->
+                                <div id="commentSection" class="mt-3" style="display: none;">
+                                    <div class="form-group">
+                                        <label for="feedbackComment">
+                                            <i class="fas fa-comment mr-1"></i>
+                                            額外意見 (選填):
+                                        </label>
+                                        <textarea id="feedbackComment" class="form-control" rows="3" 
+                                                  placeholder="請分享您對計算結果的具體意見或建議..."></textarea>
+                                    </div>
+                                    <div class="d-flex justify-content-end">
+                                        <button type="button" class="btn btn-secondary mr-2" onclick="cancelFeedback()">
+                                            取消
+                                        </button>
+                                        <button type="button" id="submitCommentBtn" class="btn btn-primary" onclick="submitComment()">
+                                            <i class="fas fa-paper-plane mr-1"></i>
+                                            提交回饋
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <!-- Feedback Success Message -->
+                                <div id="feedbackSuccess" class="alert alert-success mt-3" style="display: none;">
+                                    <i class="fas fa-check-circle mr-2"></i>
+                                    <span id="feedbackMessage">感謝您的回饋！</span>
+                                </div>
+                                
+                                <!-- Feedback Error Message -->
+                                <div id="feedbackError" class="alert alert-danger mt-3" style="display: none;">
+                                    <i class="fas fa-exclamation-triangle mr-2"></i>
+                                    提交回饋時發生錯誤，請稍後再試。
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Technical Details (Collapsible) -->
                     <div class="card shadow-sm">
                         <div class="card-header">
@@ -394,6 +462,15 @@
     </div>
 {% endblock %}
 
+<!-- Pass template data to JavaScript -->
+<script type="application/json" id="pageData">
+{
+    "patient_id": "{{ patient_id }}",
+    "score": {% if calculation_details and calculation_details.score is not none %}{{ calculation_details.score }}{% else %}null{% endif %},
+    "risk_level": "{% if calculation_details and calculation_details.category %}{{ calculation_details.category }}{% endif %}"
+}
+</script>
+
 {% block scripts %}
 <script>
 // Add some interactive features for PRECISE-DAPT
@@ -420,6 +497,119 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 });
+
+// Global feedback state
+let currentFeedbackType = null;
+let pageData = JSON.parse(document.getElementById('pageData').textContent);
+
+// Submit feedback function
+function submitFeedback(feedbackType) {
+    currentFeedbackType = feedbackType;
+    
+    // Show comment section for additional feedback
+    document.getElementById('commentSection').style.display = 'block';
+    
+    // Update button states
+    document.getElementById('thumbsUpBtn').disabled = true;
+    document.getElementById('thumbsDownBtn').disabled = true;
+    
+    // Highlight selected button
+    if (feedbackType === 'thumbs_up') {
+        document.getElementById('thumbsUpBtn').classList.remove('btn-outline-success');
+        document.getElementById('thumbsUpBtn').classList.add('btn-success');
+    } else {
+        document.getElementById('thumbsDownBtn').classList.remove('btn-outline-danger');
+        document.getElementById('thumbsDownBtn').classList.add('btn-danger');
+    }
+}
+
+// Submit comment and feedback
+function submitComment() {
+    const comment = document.getElementById('feedbackComment').value;
+    
+    // Prepare feedback data using pageData
+    const feedbackData = {
+        patient_id: pageData.patient_id,
+        feedback_type: currentFeedbackType,
+        comment: comment,
+        score: pageData.score,
+        risk_level: pageData.risk_level
+    };
+    
+    // Show loading state
+    document.getElementById('submitCommentBtn').disabled = true;
+    document.getElementById('submitCommentBtn').innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>提交中...';
+    
+    // Submit feedback via AJAX
+    fetch('/api/feedback', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(feedbackData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            // Show success message
+            document.getElementById('feedbackMessage').textContent = data.message;
+            document.getElementById('feedbackSuccess').style.display = 'block';
+            document.getElementById('feedbackError').style.display = 'none';
+            
+            // Hide comment section and buttons
+            document.getElementById('commentSection').style.display = 'none';
+            document.getElementById('thumbsUpBtn').style.display = 'none';
+            document.getElementById('thumbsDownBtn').style.display = 'none';
+            
+            // Show a thank you message
+            setTimeout(() => {
+                document.getElementById('feedbackSection').innerHTML = `
+                    <div class="text-center py-3 feedback-thank-you">
+                        <i class="fas fa-heart text-danger fa-2x mb-2"></i>
+                        <h5 class="text-success">感謝您的寶貴回饋！</h5>
+                        <p class="text-muted mb-0">您的意見幫助我們改進計算結果的準確性。</p>
+                    </div>
+                `;
+            }, 2000);
+        } else {
+            // Show error message
+            document.getElementById('feedbackError').style.display = 'block';
+            document.getElementById('feedbackSuccess').style.display = 'none';
+        }
+    })
+    .catch(error => {
+        console.error('Error submitting feedback:', error);
+        document.getElementById('feedbackError').style.display = 'block';
+        document.getElementById('feedbackSuccess').style.display = 'none';
+    })
+    .finally(() => {
+        // Reset button state
+        document.getElementById('submitCommentBtn').disabled = false;
+        document.getElementById('submitCommentBtn').innerHTML = '<i class="fas fa-paper-plane mr-1"></i>提交回饋';
+    });
+}
+
+// Cancel feedback
+function cancelFeedback() {
+    // Hide comment section
+    document.getElementById('commentSection').style.display = 'none';
+    
+    // Reset button states
+    document.getElementById('thumbsUpBtn').disabled = false;
+    document.getElementById('thumbsDownBtn').disabled = false;
+    
+    // Reset button classes
+    document.getElementById('thumbsUpBtn').classList.remove('btn-success');
+    document.getElementById('thumbsUpBtn').classList.add('btn-outline-success');
+    document.getElementById('thumbsDownBtn').classList.remove('btn-danger');
+    document.getElementById('thumbsDownBtn').classList.add('btn-outline-danger');
+    
+    // Clear comment
+    document.getElementById('feedbackComment').value = '';
+    
+    // Reset feedback type
+    currentFeedbackType = null;
+}
 </script>
 {% endblock %}
 
@@ -533,5 +723,56 @@ document.addEventListener('DOMContentLoaded', function() {
     
     .card-header.bg-info {
         background: linear-gradient(135deg, #17a2b8 0%, #138496 100%) !important;
+    }
+    
+    /* Feedback Section Styling */
+    .card-header.bg-light {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%) !important;
+        border-bottom: 2px solid #dee2e6;
+    }
+    
+    #thumbsUpBtn:hover, #thumbsDownBtn:hover {
+        transform: scale(1.05);
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
+    
+    #thumbsUpBtn.btn-success {
+        background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);
+        border-color: #1c7430;
+        animation: successPulse 0.6s ease-in-out;
+    }
+    
+    #thumbsDownBtn.btn-danger {
+        background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+        border-color: #bd2130;
+        animation: dangerPulse 0.6s ease-in-out;
+    }
+    
+    @keyframes successPulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.1); }
+        100% { transform: scale(1); }
+    }
+    
+    @keyframes dangerPulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.1); }
+        100% { transform: scale(1); }
+    }
+    
+    .feedback-thank-you {
+        animation: fadeInUp 0.5s ease-in-out;
+    }
+    
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(30px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
     }
 </style>

@@ -1,13 +1,12 @@
-Flask==2.2.2
-Flask-Session==0.4.0
-gunicorn==20.1.0
-requests==2.28.1
+Flask==3.1.0
+Flask-Session==0.5.0
+gunicorn==21.2.0
+requests==2.31.0
 python-dateutil==2.8.2
-# Werkzeug is pinned to 2.2.2 because later versions (e.g., 2.3.x) have
-# breaking changes that affect Flask 2.2.2.
-Werkzeug==2.2.2
-Flask-Cors>=4.0.0
-python-dotenv>=1.0.0
+# Remove version pinning for Werkzeug to let Flask decide the compatible version
+Werkzeug>=3.1
+Flask-Cors==5.0.0
+python-dotenv==1.0.0
 Authlib>=1.2.1
 Flask-Login>=0.6.3
 PyJWT[crypto]>=2.8.0

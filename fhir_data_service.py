@@ -72,6 +72,26 @@ def get_fhir_data(fhir_server_url, access_token, patient_id, client_id):
                 smart.server.session = requests.Session()
                 smart.server.session.headers.update(headers)
             
+            # Set up custom adapter with timeout for the session
+            import requests
+            from requests.adapters import HTTPAdapter
+            from urllib3.util.retry import Retry
+            
+            # Configure custom adapter with longer timeout
+            class TimeoutHTTPAdapter(HTTPAdapter):
+                def __init__(self, *args, **kwargs):
+                    self.timeout = kwargs.pop('timeout', 60)  # 60 seconds default
+                    super().__init__(*args, **kwargs)
+                
+                def send(self, request, **kwargs):
+                    kwargs['timeout'] = kwargs.get('timeout', self.timeout)
+                    return super().send(request, **kwargs)
+            
+            # Mount the adapter to both HTTP and HTTPS
+            adapter = TimeoutHTTPAdapter(timeout=90)  # 90 seconds for condition queries
+            smart.server.session.mount('http://', adapter)
+            smart.server.session.mount('https://', adapter)
+            
             # Also set the _auth for backward compatibility
             smart.server._auth = None  # Clear old auth
             
@@ -161,85 +181,38 @@ def get_fhir_data(fhir_server_url, access_token, patient_id, client_id):
         
         # Fetch conditions (for bleeding history)
         try:
-            # Use larger count to get more comprehensive condition data
-            # Try with fallback strategy for better compatibility and timeout handling
+            # Fetch 100 conditions with extended timeout
             conditions_list = []
             
-            try:
-                logging.info(f"Attempting to fetch conditions with _count=100 for patient {patient_id}")
-                conditions_search = condition.Condition.where({
-                    'patient': patient_id,
-                    '_count': '100'  # Try 100 first
-                }).perform(smart.server)
-                
-                if conditions_search.entry:
-                    for entry in conditions_search.entry:  # Process all returned conditions
-                        if entry.resource:
-                            conditions_list.append(entry.resource.as_json())
-                
-                logging.info(f"Successfully fetched {len(conditions_list)} condition(s) with _count=100")
-                
-            except Exception as e:
-                error_str = str(e)
-                if '504' in error_str or 'timeout' in error_str.lower() or 'gateway time-out' in error_str.lower():
-                    logging.warning(f"Timeout with _count=100, trying smaller count: {e}")
-                    # Fallback to smaller count on timeout
-                    try:
-                        conditions_search = condition.Condition.where({
-                            'patient': patient_id,
-                            '_count': '20'
-                        }).perform(smart.server)
-                        
-                        if conditions_search.entry:
-                            for entry in conditions_search.entry:
-                                if entry.resource:
-                                    conditions_list.append(entry.resource.as_json())
-                        
-                        logging.info(f"Successfully fetched {len(conditions_list)} condition(s) with _count=20 fallback")
-                        
-                    except Exception as e2:
-                        logging.warning(f"Fallback with _count=20 also failed, trying minimal count: {e2}")
-                        # Final fallback to very small count
-                        try:
-                            conditions_search = condition.Condition.where({
-                                'patient': patient_id,
-                                '_count': '5'
-                            }).perform(smart.server)
-                            
-                            if conditions_search.entry:
-                                for entry in conditions_search.entry:
-                                    if entry.resource:
-                                        conditions_list.append(entry.resource.as_json())
-                            
-                            logging.info(f"Successfully fetched {len(conditions_list)} condition(s) with _count=5 minimal fallback")
-                            
-                        except Exception as e3:
-                            logging.error(f"All condition fetching strategies failed: {e3}")
-                            conditions_list = []
-                            
-                elif '401' in error_str or '403' in error_str:
-                    logging.warning(f"Permission issue with _count=100, trying smaller count: {e}")
-                    # Permission-based fallback (existing logic)
-                    conditions_search = condition.Condition.where({
-                        'patient': patient_id,
-                        '_count': '20'
-                    }).perform(smart.server)
-                    
-                    if conditions_search.entry:
-                        for entry in conditions_search.entry:
-                            if entry.resource:
-                                conditions_list.append(entry.resource.as_json())
-                    
-                    logging.info(f"Successfully fetched {len(conditions_list)} condition(s) with _count=20 permission fallback")
-                else:
-                    raise e
+            logging.info(f"Attempting to fetch conditions with _count=100 for patient {patient_id} (90s timeout)")
+            conditions_search = condition.Condition.where({
+                'patient': patient_id,
+                '_count': '100'  # Fetch 100 conditions with extended timeout
+            }).perform(smart.server)
+            
+            if conditions_search.entry:
+                for entry in conditions_search.entry:  # Process all returned conditions
+                    if entry.resource:
+                        conditions_list.append(entry.resource.as_json())
+            
+            logging.info(f"Successfully fetched {len(conditions_list)} condition(s) with _count=100")
             
             raw_data['conditions'] = conditions_list
             logging.info(f"Final result: {len(conditions_list)} condition(s) stored")
             
         except Exception as e:
-            logging.warning(f"Error fetching conditions (continuing with empty list): {e}")
+            error_str = str(e)
+            if '504' in error_str or 'timeout' in error_str.lower() or 'gateway time-out' in error_str.lower():
+                logging.error(f"Timeout error even with extended timeout (90s): {e}")
+                logging.info("This suggests the FHIR server is very slow or overloaded")
+            elif '401' in error_str or '403' in error_str:
+                logging.error(f"Permission error for conditions: {e}")
+            else:
+                logging.error(f"Unexpected error fetching conditions: {e}")
+            
+            # Continue with empty conditions list
             raw_data['conditions'] = []
+            logging.warning(f"Continuing with empty conditions list due to error: {e}")
         
         # For PRECISE-DAPT, we don't need medications and procedures, but keep minimal fetch for compatibility
         raw_data['med_requests'] = []
@@ -339,11 +312,41 @@ def calculate_egfr(cr_val, age, gender):
 
 def get_score_from_table(value, score_table, range_key):
     """Helper function to get score from lookup tables."""
+    matched_score = None
+    
     for item in score_table:
         if range_key in item:
             range_values = item[range_key]
             if len(range_values) == 2 and range_values[0] <= value <= range_values[1]:
                 return item.get('base_score', 0)
+    
+    # If no exact match, check if value exceeds the highest range
+    # In that case, use the highest available score
+    if range_key == 'age_range':
+        # For age, if older than max range, use the highest score
+        max_range_item = max(score_table, key=lambda x: x[range_key][1] if range_key in x else 0)
+        if value > max_range_item[range_key][1]:
+            logging.info(f"Age {value} exceeds max range {max_range_item[range_key]}, using highest score: {max_range_item.get('base_score', 0)}")
+            return max_range_item.get('base_score', 0)
+    elif range_key == 'hb_range':
+        # For hemoglobin, if lower than min range, use the highest score (lowest Hb = highest risk)
+        min_range_item = min(score_table, key=lambda x: x[range_key][0] if range_key in x else float('inf'))
+        if value < min_range_item[range_key][0]:
+            logging.info(f"Hemoglobin {value} below min range {min_range_item[range_key]}, using highest score: {min_range_item.get('base_score', 0)}")
+            return min_range_item.get('base_score', 0)
+    elif range_key == 'ccr_range':
+        # For creatinine clearance, if lower than min range, use the highest score (lowest CCr = highest risk)
+        min_range_item = min(score_table, key=lambda x: x[range_key][0] if range_key in x else float('inf'))
+        if value < min_range_item[range_key][0]:
+            logging.info(f"Creatinine clearance {value} below min range {min_range_item[range_key]}, using highest score: {min_range_item.get('base_score', 0)}")
+            return min_range_item.get('base_score', 0)
+    elif range_key == 'wbc_range':
+        # For WBC, if higher than max range, use the highest score (higher WBC = higher risk)
+        max_range_item = max(score_table, key=lambda x: x[range_key][1] if range_key in x else 0)
+        if value > max_range_item[range_key][1]:
+            logging.info(f"WBC {value} exceeds max range {max_range_item[range_key]}, using highest score: {max_range_item.get('base_score', 0)}")
+            return max_range_item.get('base_score', 0)
+    
     return 0
 
 def check_bleeding_history(conditions):
@@ -563,4 +566,42 @@ def calculate_risk_components(raw_data, demographics):
     Main function to calculate PRECISE-DAPT bleeding risk score.
     Returns list of components and total score.
     """
-    return calculate_precise_dapt_score(raw_data, demographics) 
+    return calculate_precise_dapt_score(raw_data, demographics)
+
+def get_active_medications(raw_data, demographics):
+    """
+    Process medication data from FHIR resources to identify active medications.
+    Used for CDS Hooks medication analysis.
+    
+    Returns: list of active medication resources
+    """
+    medications = raw_data.get('med_requests', [])
+    active_medications = []
+    
+    for med in medications:
+        # Check if medication is active
+        status = med.get('status', '').lower()
+        if status in ['active', 'on-hold', 'completed']:
+            active_medications.append(med)
+    
+    logging.info(f"Found {len(active_medications)} active medications")
+    return active_medications
+
+def check_medication_interactions_bleeding_risk(medications):
+    """
+    Check for medication combinations that increase bleeding risk.
+    Specifically looks for DAPT combinations and other high-risk medications.
+    
+    Returns: dict with interaction details
+    """
+    interactions = {
+        'dapt_detected': False,
+        'high_risk_combinations': [],
+        'bleeding_risk_medications': [],
+        'recommendations': []
+    }
+    
+    # This function can be expanded to include more sophisticated
+    # medication interaction checking beyond DAPT
+    
+    return interactions 
