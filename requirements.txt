@@ -9,12 +9,16 @@ PyJWT==2.8.0
 cryptography==44.0.1
 python-dateutil==2.8.2
 fhirclient==4.1.0
-Flask-Talisman
 # Security
+Flask-Talisman==1.1.0
 bandit==1.7.5
 pip-audit==2.7.2
-Flask-Talisman==1.1.0
+defusedxml==0.7.1
 google-cloud-secret-manager==2.16.2
 
-# Testing
+# Testing and Performance Analysis
 locust==2.24.0
+Flask-WTF==1.2.2
+matplotlib==3.7.2
+pandas==2.0.3
+seaborn==0.12.2

@@ -197,9 +197,14 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 
-# FHIR value sets (如果不需要)
-*_valueset.json
-example_*.json
+# FHIR value sets - INCLUDE THESE (they are required for ARC-HBR calculations)
+# *_valueset.json  # COMMENTED OUT - these files are needed!
 
-# CDS services config (如果不需要)
-cds-services.json
+# Example files that can be excluded
+example_snomed_valueset.json
+
+# CDS services config - INCLUDE THIS (needed for CDS Hooks)
+# cds-services.json  # COMMENTED OUT - this file is needed!
+
+# Test files that can be excluded
+smart_health_test_*.json

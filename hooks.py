@@ -3,6 +3,7 @@ import logging
 import os
 
 from flask import Blueprint, jsonify, request
+from flask_cors import CORS
 
 from fhir_data_service import (
     get_patient_demographics,
@@ -11,6 +12,13 @@ from fhir_data_service import (
 )
 
 hooks_bp = Blueprint('hooks', __name__)
+
+# Enable CORS for ALL CDS Hooks endpoints (required for external CDS Hooks clients like sandbox.cds-hooks.org)
+CORS(hooks_bp, 
+     origins="*",  # Allow all origins for CDS Hooks
+     methods=["GET", "POST", "OPTIONS"],
+     allow_headers=["Content-Type", "Authorization"],
+     supports_credentials=False)
 
 
 def check_high_bleeding_risk_medications(medications):
@@ -199,4 +207,85 @@ def handle_precise_hbr_bleeding_risk_hook():
         logging.error(
             f"Error in PRECISE-HBR CDS Hook: {e}",
             exc_info=True)
+        return jsonify({"cards": []}), 500
+
+
+@hooks_bp.route('/cds-services/precise_hbr_patient_view', methods=['POST'])
+def precise_hbr_patient_view():
+    """
+    CDS Hook for patient-view context.
+    Displays PRECISE-HBR bleeding risk assessment when viewing a patient.
+    This hook is triggered automatically when a clinician opens a patient's chart.
+    """
+    try:
+        data = request.get_json()
+        logging.info(f"Received patient-view CDS Hook request: {data.get('hook')}")
+        
+        # Extract context and prefetch data
+        context = data.get('context', {})
+        prefetch = data.get('prefetch', {})
+        patient_id = context.get('patientId')
+        
+        if not patient_id:
+            logging.warning("No patientId in context for patient-view hook")
+            return jsonify({"cards": []})
+        
+        # Get patient data from prefetch
+        patient_data = prefetch.get('patient')
+        if not patient_data:
+            logging.warning(f"No patient data in prefetch for patient {patient_id}")
+            return jsonify({"cards": []})
+        
+        # Get patient name for display
+        patient_name = "Patient"
+        if patient_data.get('name') and len(patient_data['name']) > 0:
+            name_parts = patient_data['name'][0]
+            given = ' '.join(name_parts.get('given', []))
+            family = name_parts.get('family', '')
+            patient_name = f"{given} {family}".strip() or "Patient"
+        
+        # Check medications for high bleeding risk
+        medications = prefetch.get('medications', {}).get('entry', [])
+        high_risk_medications = check_high_bleeding_risk_medications(medications)
+        
+        # Prepare raw data for risk calculation
+        raw_data = {
+            'patient': patient_data,
+            'HEMOGLOBIN': [entry['resource'] for entry in prefetch.get('hemoglobin', {}).get('entry', [])],
+            'CREATININE': [entry['resource'] for entry in prefetch.get('creatinine', {}).get('entry', [])],
+            'EGFR': [entry['resource'] for entry in prefetch.get('egfr', {}).get('entry', [])],
+            'WBC': [entry['resource'] for entry in prefetch.get('wbc', {}).get('entry', [])],
+            'conditions': [entry['resource'] for entry in prefetch.get('conditions', {}).get('entry', [])]
+        }
+        
+        # Calculate risk score
+        demographics = get_patient_demographics(patient_data)
+        score_components, total_score = calculate_precise_hbr_score(raw_data, demographics)
+        display_info = get_precise_hbr_display_info(total_score)
+        
+        # Always show an info card in patient-view (even for low risk)
+        if total_score >= 23:
+            # High risk - show warning card
+            card = create_precise_hbr_warning_card(
+                patient_name, total_score, display_info.get('full_label'),
+                display_info.get('recommendation'), high_risk_medications
+            )
+        else:
+            # Low/moderate risk - show info card
+            card = {
+                "summary": f"PRECISE-HBR Score: {total_score} - {display_info.get('full_label')}",
+                "indicator": "info",
+                "detail": f"{patient_name} has a {display_info.get('full_label').lower()} for major bleeding. "
+                         f"PRECISE-HBR score: {total_score}. {display_info.get('recommendation')}",
+                "source": {
+                    "label": "PRECISE-HBR Risk Assessment",
+                    "url": "https://www.acc.org/latest-in-cardiology/articles/2022/01/18/16/19/predicting-out-of-hospital-bleeding-after-pci"
+                },
+                "links": []
+            }
+        
+        return jsonify({"cards": [card]})
+    
+    except Exception as e:
+        logging.error(f"Error in patient-view CDS Hook: {e}", exc_info=True)
         return jsonify({"cards": []}), 500

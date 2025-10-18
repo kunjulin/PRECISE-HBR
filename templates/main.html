@@ -5,34 +5,51 @@
 {% block content %}
 <div class="container mt-4">
     <!-- Information Banner -->
-    <div class="alert alert-info mb-4" role="alert">
+    <div class="alert alert-info mb-4" role="alert" aria-live="polite">
         <div class="d-flex align-items-center">
-            <i class="fas fa-info-circle me-2"></i>
+            <i class="fas fa-info-circle me-2" aria-hidden="true"></i>
             <div class="flex-grow-1">
                 <strong>PRECISE-HBR Bleeding Risk Calculator</strong> - Evidence-based clinical decision support for high bleeding risk assessment in PCI patients.
             </div>
             <div>
-                <a href="/landing" target="_blank" class="btn btn-sm btn-outline-primary me-2">
-                    <i class="fas fa-external-link-alt"></i> Learn More
+                <a href="/landing" target="_blank" class="btn btn-sm btn-outline-primary me-2" aria-label="Learn more about PRECISE-HBR (opens in new window)">
+                    <i class="fas fa-external-link-alt" aria-hidden="true"></i> Learn More
                 </a>
-                <a href="/docs" target="_blank" class="btn btn-sm btn-outline-secondary">
-                    <i class="fas fa-book"></i> Documentation
+                <a href="/docs" target="_blank" class="btn btn-sm btn-outline-secondary" aria-label="View documentation (opens in new window)">
+                    <i class="fas fa-book" aria-hidden="true"></i> Documentation
                 </a>
             </div>
         </div>
     </div>
 
-    <div id="loading-container" class="text-center">
-        <div class="spinner-border text-primary" role="status">
-            <span class="visually-hidden">Loading...</span>
+    <!-- R-04 Risk Mitigation: Enhanced Security Advisory Banner -->
+    <div class="alert alert-warning mb-4" role="alert" aria-live="polite">
+        <div class="d-flex align-items-center justify-content-between">
+            <div class="d-flex align-items-center">
+                <i class="fas fa-shield-alt me-2" aria-hidden="true"></i>
+                <div>
+                    <strong>Security Notice:</strong> You are viewing Protected Health Information (PHI). Please ensure you are on a secure network and be mindful of your surroundings to protect patient privacy.
+                </div>
+            </div>
+            <div class="text-end">
+                <small class="text-muted">Session timeout: <span id="session-timer" aria-live="polite" aria-atomic="true">5:00</span></small>
+            </div>
         </div>
-        <p class="mt-2">Fetching patient data from FHIR server and calculating risk score, please wait...</p>
     </div>
 
-    <div id="error-container" class="alert alert-danger" style="display: none;">
-        <h4><i class="fas fa-exclamation-triangle"></i> Error Calculating Risk</h4>
+    <div id="loading-container" class="text-center" role="status" aria-live="assertive" aria-atomic="true">
+        <div class="spinner-border text-primary" role="status" aria-label="Loading patient data">
+            <span class="visually-hidden">Loading patient data, please wait...</span>
+        </div>
+        <p class="mt-2" id="loading-message">Fetching patient data from FHIR server and calculating risk score, please wait...</p>
+    </div>
+
+    <div id="error-container" class="alert alert-danger" style="display: none;" role="alert" aria-live="assertive" aria-atomic="true">
+        <h4><i class="fas fa-exclamation-triangle" aria-hidden="true"></i> Error Calculating Risk</h4>
         <p id="error-message"></p>
-        <button onclick="window.location.reload()" class="btn btn-primary">Retry</button>
+        <button onclick="window.location.reload()" class="btn btn-primary" aria-label="Retry calculation">
+            <i class="fas fa-redo" aria-hidden="true"></i> Retry
+        </button>
     </div>
 
     <div id="results-container" style="display: none;">
@@ -66,8 +83,15 @@
             <!-- Total Score -->
             <div class="col-md-8">
                 <div class="card shadow-sm mb-4">
-                    <div class="card-header bg-light">
+                    <div class="card-header bg-light d-flex justify-content-between align-items-center">
                         <h5 class="mb-0"><i class="fas fa-calculator"></i> Total Risk Score</h5>
+                        <!-- ONC Compliance: CCD Export Button -->
+                        <button id="exportCcdBtn" class="btn btn-sm btn-outline-primary" 
+                                onclick="exportCCD()" 
+                                style="display: none;"
+                                title="Export results as C-CDA Continuity of Care Document">
+                            <i class="fas fa-download"></i> Export CCD
+                        </button>
                     </div>
                     <div class="card-body text-center">
                         <h1 id="total-score" class="display-3 fw-bold"></h1>
@@ -78,27 +102,137 @@
             </div>
         </div>
 
+        <!-- HBR Clinical Recommendations Section (Dynamically shown when HBR detected) -->
+        <div class="row" id="hbr-recommendations-section" style="display: none;">
+            <div class="col-12">
+                <div class="alert alert-warning border-warning" style="border-left: 5px solid #ffc107;">
+                    <h4 class="mb-3">
+                        <i class="fas fa-exclamation-triangle text-warning"></i> 
+                        <strong>High Bleeding Risk (HBR) Detected</strong>
+                    </h4>
+                    <p class="mb-3">
+                        Based on the PRECISE-HBR score (≥23), this patient has been identified as having <strong>high bleeding risk</strong>. 
+                        Consider the following antiplatelet strategies to reduce bleeding risk:
+                    </p>
+                    
+                    <div class="card mb-3">
+                        <div class="card-header bg-primary text-white">
+                            <h5 class="mb-0">💊 Recommended Antiplatelet Strategies (Post-ACS)</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h6 class="text-primary"><strong>Strategy 1: Abbreviated DAPT</strong></h6>
+                                    <ul class="mb-3">
+                                        <li><strong>HBR patients only:</strong>
+                                            <ul>
+                                                <li>1 month DAPT (dual antiplatelet therapy)</li>
+                                                <li>Then switch to P2Y₁₂ inhibitor or aspirin monotherapy</li>
+                                            </ul>
+                                        </li>
+                                        <li><strong>HBR and non-HBR patients:</strong>
+                                            <ul>
+                                                <li>3-6 months DAPT</li>
+                                                <li>Then switch to P2Y₁₂ inhibitor or aspirin monotherapy</li>
+                                            </ul>
+                                        </li>
+                                    </ul>
+                                </div>
+                                <div class="col-md-6">
+                                    <h6 class="text-success"><strong>Strategy 2: DAPT De-escalation</strong></h6>
+                                    <ul class="mb-3">
+                                        <li><strong>Initial therapy:</strong>
+                                            <ul>
+                                                <li>Aspirin + Prasugrel, OR</li>
+                                                <li>Aspirin + Ticagrelor</li>
+                                            </ul>
+                                        </li>
+                                        <li><strong>At 3 months:</strong>
+                                            <ul>
+                                                <li>De-escalate: Change from potent P2Y₁₂ inhibitor to clopidogrel</li>
+                                                <li>Continue: Aspirin + Clopidogrel</li>
+                                            </ul>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
+                            
+                            <div class="alert alert-info mb-3">
+                                <strong><i class="fas fa-info-circle"></i> Clinical Guideline:</strong>
+                                <p class="mb-2">
+                                    These recommendations are based on ESC (European Society of Cardiology) guidelines for 
+                                    managing antiplatelet therapy in patients with high bleeding risk after acute coronary syndrome (ACS).
+                                </p>
+                            </div>
+                            
+                            <div class="text-center mt-3">
+                                <img src="{{ url_for('static', filename='images/HBR_guideline.jpg') }}" 
+                                     alt="HBR Antiplatelet Strategy Guideline" 
+                                     class="img-fluid rounded shadow"
+                                     style="max-width: 100%; height: auto; cursor: pointer; border: 2px solid #dee2e6;"
+                                     onclick="window.open(this.src, '_blank')">
+                                <p class="text-muted mt-2">
+                                    <small>Click image to view full size | Source: ESC Guidelines</small>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-danger mb-0">
+                        <strong><i class="fas fa-shield-exclamation"></i> Important Note:</strong>
+                        <p class="mb-0">
+                            These are general recommendations based on clinical guidelines. <strong>Always consult with the treating physician</strong> 
+                            before making any changes to antiplatelet therapy. Individual patient factors, concomitant medications, 
+                            and clinical context must be considered.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Missing Data Warning -->
+        <div id="missing-data-warning" class="alert alert-warning mb-4" role="alert" aria-live="polite" style="display: none;">
+            <div class="d-flex align-items-start">
+                <i class="fas fa-exclamation-triangle me-3 mt-1" aria-hidden="true" style="font-size: 1.5rem;"></i>
+                <div class="flex-grow-1">
+                    <h5 class="alert-heading mb-2">
+                        <strong>⚠️ Missing Data Detected - Risk May Be Underestimated</strong>
+                    </h5>
+                    <p class="mb-2">
+                        The following important risk factors have missing data. The calculated bleeding risk score may be <strong>lower than the actual risk</strong>.
+                    </p>
+                    <ul id="missing-data-list" class="mb-2" style="padding-left: 1.5rem;">
+                        <!-- Missing data items will be inserted here by JavaScript -->
+                    </ul>
+                    <p class="mb-0 text-muted">
+                        <i class="fas fa-info-circle"></i>
+                        <small>Please manually enter the missing values in the table below if available, or interpret results with caution.</small>
+                    </p>
+                </div>
+            </div>
+        </div>
+
         <!-- Score Breakdown -->
         <div class="card shadow-sm mb-4">
             <div class="card-header">
-                <h5 class="mb-0"><i class="fas fa-list-ul"></i> Score Components</h5>
+                <h5 class="mb-0"><i class="fas fa-list-ul" aria-hidden="true"></i> Score Components</h5>
             </div>
             <div class="card-body">
-                <table class="table table-hover align-middle">
+                <table class="table table-hover align-middle" role="table" aria-label="Risk score components" style="font-size: 1.4rem;">
                     <thead class="table-light">
                         <tr>
-                            <th style="width: 35%;">Risk Factor</th>
-                            <th style="width: 40%;">Value (Editable)</th>
-                            <th style="width: 10%;">Score</th>
-                            <th style="width: 15%;">Date</th>
+                            <th scope="col" style="width: 35%; font-size: 1.3rem;">Risk Factor</th>
+                            <th scope="col" style="width: 40%; font-size: 1.3rem;">Value (Editable)</th>
+                            <th scope="col" style="width: 10%; font-size: 1.3rem;">Score</th>
+                            <th scope="col" style="width: 15%; font-size: 1.3rem;">Date</th>
                         </tr>
                     </thead>
                     <tbody id="score-components">
                         <!-- Interactive components will be inserted here by JavaScript -->
                     </tbody>
                 </table>
-                <div class="form-text mt-2">
-                    <i class="fas fa-info-circle"></i>
+                <div class="form-text mt-2" role="note" aria-label="Editing instructions">
+                    <i class="fas fa-info-circle" aria-hidden="true"></i>
                     You can manually edit the values in the table above to perform a "what-if" analysis. The total score will update automatically.
                 </div>
             </div>
@@ -163,6 +297,47 @@
                 </div>
             </div>
         </div>
+
+        <!-- ARC-HBR Guideline Image -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-light">
+                <h5 class="mb-0">
+                    <i class="fas fa-image mr-2"></i>
+                    ARC-HBR Guideline Reference
+                </h5>
+            </div>
+            <div class="card-body text-center">
+                <img src="{{ url_for('static', filename='images/ARCHBR.png') }}" 
+                     alt="ARC-HBR Guideline" 
+                     class="img-fluid" 
+                     style="max-width: 100%; height: auto; border: 1px solid #dee2e6; border-radius: 4px;">
+            </div>
+        </div>
+
+        <!-- Citation Information -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-light">
+                <h5 class="mb-0">
+                    <i class="fas fa-book mr-2"></i>
+                    Citation
+                </h5>
+            </div>
+            <div class="card-body">
+                <div style="font-family: 'Courier New', monospace; font-size: 0.9rem; background-color: #f8f9fa; padding: 1rem; border-radius: 4px; border: 1px solid #dee2e6;">
+                    <p class="mb-1"><strong>Article Type:</strong> Journal Article</p>
+                    <p class="mb-1"><strong>Title:</strong> Derivation and Validation of the PRECISE-HBR Score to Predict Bleeding After Percutaneous Coronary Intervention</p>
+                    <p class="mb-1"><strong>Authors:</strong> Gragnano, Felice; van Klaveren, David; Heg, Dik; Räber, Lorenz; Krucoff, Mitchell W.; Raposeiras-Roubín, Sergio; ten Berg, Jurriën M.; Leonardi, Sergio; Kimura, Takeshi; Corpataux, Noé; Spirito, Alessandro; Hermiller, James B.; Abu-Assi, Emad; Chan Pin Yin, Dean; Azzahhafi, Jaouad; Montalto, Claudio; Galazzi, Marco; Bär, Sarah; Kavaliauskaite, Raminta; D'Ascenzo, Fabrizio; De Ferrari, Gaetano M.; Watanabe, Hirotoshi; Steg, Philippe Gabriel; Bhatt, Deepak L.; Calabrò, Paolo; Mehran, Roxana; Urban, Philip; Pocock, Stuart; Windecker, Stephan; Valgimigli, Marco</p>
+                    <p class="mb-1"><strong>Journal:</strong> Circulation</p>
+                    <p class="mb-1"><strong>Year:</strong> 2025</p>
+                    <p class="mb-1"><strong>Date:</strong> 2025/02/11</p>
+                    <p class="mb-1"><strong>Volume:</strong> 151</p>
+                    <p class="mb-1"><strong>Issue:</strong> 6</p>
+                    <p class="mb-1"><strong>Pages:</strong> 343-355</p>
+                    <p class="mb-1"><strong>Publisher:</strong> American Heart Association</p>
+                    <p class="mb-1"><strong>DOI:</strong> <a href="https://doi.org/10.1161/CIRCULATIONAHA.124.072009" target="_blank" rel="noopener noreferrer">10.1161/CIRCULATIONAHA.124.072009</a></p>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 {% endblock %}
@@ -173,8 +348,197 @@
     let currentFeedbackType = null;
     let currentPatientData = null;
     let scoreComponentData = []; // Store the component data globally
+    
+    // === NEW: Unit conversion tracking ===
+    let unitSettings = {
+        hemoglobin: 'g/dL',  // or 'mmol/L'
+        // Can add more units as needed
+    };
+    
+    // === NEW: Clinical tooltips data ===
+    const clinicalTooltips = {
+        'Age': {
+            title: 'Age（年齡）',
+            content: '年齡是 PRECISE-HBR 模型中的連續變數。計算時會截斷至 30-80 歲範圍，年齡越大分數越高。',
+            normalRange: '計算範圍：30-80 歲',
+            riskFactors: '計分權重：每增加 1 歲 = +0.25 分<br>範例：65歲 = (65-30)×0.25 = 8.75 分'
+        },
+        'Hemoglobin': {
+            title: 'Hemoglobin（血紅素）',
+            content: '血紅素是 PRECISE-HBR 模型中的連續變數。計算時會截斷至 5-15 g/dL 範圍，血紅素越低分數越高。',
+            normalRange: '計算範圍：5-15 g/dL',
+            riskFactors: '計分權重：每降低 1 g/dL = +2.5 分<br>範例：12 g/dL = (15-12)×2.5 = 7.5 分'
+        },
+        'eGFR': {
+            title: 'eGFR（腎絲球過濾率）',
+            content: 'eGFR 是 PRECISE-HBR 模型中的連續變數。計算時會截斷至 5-100 mL/min 範圍，腎功能越差分數越高。',
+            normalRange: '計算範圍：5-100 mL/min/1.73m²',
+            riskFactors: '計分權重：每降低 1 mL/min = +0.05 分<br>範例：60 mL/min = (100-60)×0.05 = 2.0 分'
+        },
+        'White Blood Cell': {
+            title: 'White Blood Cell（白血球）',
+            content: '白血球是 PRECISE-HBR 模型中的連續變數。計算時會截斷至最高 15 ×10⁹/L，白血球越高分數越高。',
+            normalRange: '計算範圍：0-15 ×10⁹/L',
+            riskFactors: '計分權重：每增加 1 ×10⁹/L = +0.5 分<br>範例：10 ×10⁹/L = 10×0.5 = 5.0 分'
+        },
+        'White Blood Cell Count': {
+            title: 'White Blood Cell Count（白血球計數）',
+            content: '白血球是 PRECISE-HBR 模型中的連續變數。計算時會截斷至最高 15 ×10⁹/L，白血球越高分數越高。',
+            normalRange: '計算範圍：0-15 ×10⁹/L',
+            riskFactors: '計分權重：每增加 1 ×10⁹/L = +0.5 分<br>範例：10 ×10⁹/L = 10×0.5 = 5.0 分'
+        },
+        'Previous bleeding': {
+            title: 'Previous Bleeding（既往出血史）',
+            content: '既往嚴重出血史是未來出血最強的預測因子。包括消化道出血、顱內出血、需要輸血的出血等。',
+            normalRange: '無出血史',
+            riskFactors: '有出血史者風險顯著增加（+7分）'
+        },
+        'Long-term OAC': {
+            title: 'Long-term Oral Anticoagulation（長期口服抗凝藥）',
+            content: '長期使用口服抗凝劑（如Warfarin、DOAC）會顯著增加出血風險，特別是與抗血小板藥物合併使用時。',
+            normalRange: '未使用',
+            riskFactors: '使用者出血風險翻倍（+5分）'
+        },
+        'Long-term oral anticoagulation': {
+            title: 'Long-term Oral Anticoagulation（長期口服抗凝藥）',
+            content: '長期使用口服抗凝劑（如Warfarin、新型口服抗凝劑DOAC）會顯著增加出血風險。與雙重或三重抗血小板治療併用時，出血風險進一步升高。',
+            normalRange: '未使用抗凝劑',
+            riskFactors: 'ARC-HBR 主要準則，單獨即達高出血風險'
+        },
+        'Platelet count': {
+            title: 'Platelet Count（血小板計數）',
+            content: '血小板是凝血功能的關鍵。血小板過低（<100×10⁹/L）會削弱凝血能力，增加自發性出血和創傷後出血風險。可能由骨髓疾病、脾功能亢進或藥物引起。',
+            normalRange: '150-400 ×10⁹/L',
+            riskFactors: '<100 ×10⁹/L 為 ARC-HBR 主要準則<br><50 ×10⁹/L 為嚴重血小板減少'
+        },
+        'Platelet count <100': {
+            title: 'Platelet Count <100 ×10⁹/L（血小板減少）',
+            content: '血小板是凝血功能的關鍵。血小板過低（<100×10⁹/L）會削弱凝血能力，增加自發性出血和創傷後出血風險。可能由骨髓疾病、脾功能亢進或藥物引起。',
+            normalRange: '150-400 ×10⁹/L',
+            riskFactors: '<100 ×10⁹/L 為 ARC-HBR 主要準則<br><50 ×10⁹/L 為嚴重血小板減少'
+        },
+        'Chronic bleeding diathesis': {
+            title: 'Chronic Bleeding Diathesis（慢性出血體質）',
+            content: '指先天或後天的凝血功能障礙，如血友病、von Willebrand病、纖維蛋白原缺乏症等。這些患者的凝血機制本身存在缺陷，抗血小板治療會進一步增加出血風險。',
+            normalRange: '無凝血功能障礙',
+            riskFactors: 'ARC-HBR 主要準則<br>包括：血友病、von Willebrand病、凝血因子缺乏'
+        },
+        'Liver cirrhosis': {
+            title: 'Liver Cirrhosis with Portal Hypertension（肝硬化合併門脈高壓）',
+            content: '肝硬化導致凝血因子合成減少，門脈高壓造成食道靜脈曲張和脾功能亢進（導致血小板減少）。這些因素共同顯著增加消化道大出血風險。',
+            normalRange: '無肝硬化',
+            riskFactors: 'ARC-HBR 主要準則<br>食道靜脈曲張破裂死亡率高達20-30%'
+        },
+        'Active malignancy': {
+            title: 'Active Malignancy（活動性惡性腫瘤）',
+            content: '活動性癌症（過去12個月內診斷或治療中的惡性腫瘤，不包括皮膚基底細胞癌）會增加出血風險。腫瘤本身、化療和放療都可能影響凝血功能和血小板數量。',
+            normalRange: '無活動性惡性腫瘤',
+            riskFactors: 'ARC-HBR 主要準則<br>出血風險與腫瘤類型、分期和治療相關'
+        },
+        'Chronic use of nsaids': {
+            title: 'Chronic Use of NSAIDs or Corticosteroids（長期使用消炎藥或類固醇）',
+            content: 'NSAIDs（非類固醇消炎藥）會抑制血小板功能並損傷胃黏膜，增加消化道出血風險。類固醇長期使用會削弱血管壁，增加出血傾向。兩者與抗血小板藥物併用時風險疊加。',
+            normalRange: '未長期使用',
+            riskFactors: 'ARC-HBR 次要準則<br>包括：ibuprofen、naproxen、類固醇等'
+        },
+        'Anemia': {
+            title: 'Anemia（貧血）',
+            content: '貧血（血紅素 <11 g/dL）本身可能是慢性出血的表現，也會降低患者對出血併發症的耐受性。貧血患者若發生出血事件，更容易出現血流動力學不穩定。',
+            normalRange: '血紅素 ≥13 g/dL（男性）、≥12 g/dL（女性）',
+            riskFactors: 'Hb <11 g/dL 為 ARC-HBR 次要準則'
+        },
+        'Chronic kidney disease': {
+            title: 'Chronic Kidney Disease（慢性腎臟病）',
+            content: '慢性腎臟病（eGFR <60 mL/min）會影響血小板功能和凝血因子代謝，同時許多抗血栓藥物需要經腎臟代謝，腎功能不全會導致藥物蓄積，增加出血風險。',
+            normalRange: 'eGFR ≥60 mL/min/1.73m²',
+            riskFactors: 'eGFR <60 為 ARC-HBR 次要準則<br>eGFR <30 為主要準則'
+        },
+        'Thrombocytopenia': {
+            title: 'Thrombocytopenia（血小板減少）',
+            content: '血小板計數低於正常值會影響初級止血功能。中度血小板減少（<100×10⁹/L）即可能增加出血風險，特別是在接受侵入性操作或抗血栓治療時。',
+            normalRange: '150-400 ×10⁹/L',
+            riskFactors: '<100 ×10⁹/L 為 ARC-HBR 主要準則'
+        }
+    };
+
+    // R-04 Risk Mitigation: Session timeout functionality
+    let sessionTimeoutMinutes = 5; // 5 minutes timeout
+    let sessionTimer = sessionTimeoutMinutes * 60; // Convert to seconds
+    let sessionInterval;
+    
+    function startSessionTimer() {
+        sessionInterval = setInterval(function() {
+            sessionTimer--;
+            
+            // Update display
+            const minutes = Math.floor(sessionTimer / 60);
+            const seconds = sessionTimer % 60;
+            document.getElementById('session-timer').textContent = 
+                `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            
+            // Warning at 1 minute
+            if (sessionTimer === 60) {
+                showSessionWarning();
+            }
+            
+            // Auto logout at 0
+            if (sessionTimer <= 0) {
+                autoLogout();
+            }
+        }, 1000);
+    }
+    
+    function showSessionWarning() {
+        const warningDiv = document.createElement('div');
+        warningDiv.className = 'alert alert-danger alert-dismissible fade show position-fixed';
+        warningDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; max-width: 400px;';
+        warningDiv.innerHTML = `
+            <i class="fas fa-exclamation-triangle"></i>
+            <strong>Session Warning:</strong> Your session will expire in 1 minute due to inactivity. 
+            <button onclick="extendSession()" class="btn btn-sm btn-light ms-2">Extend Session</button>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        document.body.appendChild(warningDiv);
+        
+        // Auto-remove after 10 seconds if not dismissed
+        setTimeout(() => {
+            if (warningDiv.parentNode) {
+                warningDiv.remove();
+            }
+        }, 10000);
+    }
+    
+    function extendSession() {
+        sessionTimer = sessionTimeoutMinutes * 60; // Reset timer
+        document.querySelectorAll('.alert-danger').forEach(alert => {
+            if (alert.textContent.includes('Session Warning')) {
+                alert.remove();
+            }
+        });
+    }
+    
+    function autoLogout() {
+        clearInterval(sessionInterval);
+        alert('Your session has expired for security reasons. You will be logged out.');
+        window.location.href = '/logout';
+    }
+    
+    // Reset timer on user activity
+    function resetSessionTimer() {
+        if (sessionTimer > 0) {
+            sessionTimer = sessionTimeoutMinutes * 60;
+        }
+    }
+    
+    // Listen for user activity
+    ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'].forEach(event => {
+        document.addEventListener(event, resetSessionTimer, { passive: true });
+    });
 
     document.addEventListener("DOMContentLoaded", function() {
+        // Start session timer
+        startSessionTimer();
+        
         // The patient_id is rendered into the template from the session by Flask
         const patientId = "{{ patient_id }}";
         if (patientId && patientId !== 'N/A') {
@@ -216,9 +580,30 @@
         currentPatientData = data;
         scoreComponentData = data.score_components; // Store for recalculation
 
-        // Hide loading, show results
+        // Check for required data completeness
+        const requiredParameters = ['Age', 'Hemoglobin', 'eGFR', 'White Blood Cell'];
+        const missingCriticalData = [];
+        
+        scoreComponentData.forEach(item => {
+            const paramName = item.parameter || '';
+            requiredParameters.forEach(required => {
+                if (paramName.includes(required)) {
+                    const isMissing = item.value === 'Not available' || 
+                                     item.value === 'N/A' || 
+                                     (item.raw_value === null && item.is_present === null);
+                    if (isMissing) {
+                        missingCriticalData.push(required);
+                    }
+                }
+            });
+        });
+
+        // Hide loading, show results (even if data is missing)
         document.getElementById('loading-container').style.display = 'none';
         document.getElementById('results-container').style.display = 'block';
+        
+        // Store missing data info for later use
+        window.initialMissingCriticalData = missingCriticalData;
 
         // Patient Info
         console.log('Patient info data:', data.patient_info); // Debug log
@@ -243,59 +628,426 @@
         // Render the interactive table for the first time
         renderInteractiveTable();
         
+        // Show CCD export button after results are loaded
+        document.getElementById('exportCcdBtn').style.display = 'inline-block';
+        
         // Perform the initial calculation and UI update
+        recalculateAndRefreshUI();
+    }
+
+    function getUnitForParameter(parameterName) {
+        // Return the appropriate unit based on parameter name
+        if (parameterName.includes("Age")) return "years";
+        if (parameterName.includes("Hemoglobin")) {
+            return unitSettings.hemoglobin || "g/dL";
+        }
+        if (parameterName.includes("eGFR")) return "mL/min/1.73m²";
+        if (parameterName.includes("White Blood Cell")) return "×10⁹/L";
+        return "";
+    }
+    
+    // === NEW: Unit Conversion Functions ===
+    function convertHemoglobin(value, fromUnit, toUnit) {
+        // Hemoglobin conversion: g/dL ⇄ mmol/L
+        // 1 g/dL = 0.6206 mmol/L
+        if (fromUnit === toUnit) return value;
+        
+        if (fromUnit === 'g/dL' && toUnit === 'mmol/L') {
+            return value * 0.6206;
+        } else if (fromUnit === 'mmol/L' && toUnit === 'g/dL') {
+            return value / 0.6206;
+        }
+        return value;
+    }
+    
+    function toggleHemoglobinUnit(inputElement) {
+        const currentValue = parseFloat(inputElement.value);
+        if (isNaN(currentValue)) return;
+        
+        const currentUnit = unitSettings.hemoglobin;
+        const newUnit = currentUnit === 'g/dL' ? 'mmol/L' : 'g/dL';
+        
+        // Convert value
+        const newValue = convertHemoglobin(currentValue, currentUnit, newUnit);
+        
+        // Update
+        inputElement.value = newValue.toFixed(2);
+        unitSettings.hemoglobin = newUnit;
+        
+        // Update unit display
+        const unitSpan = inputElement.closest('.input-group').querySelector('.input-group-text');
+        if (unitSpan) {
+            unitSpan.textContent = newUnit;
+        }
+        
+        // Recalculate
+        recalculateAndRefreshUI();
+    }
+    
+    // === NEW: Value Validation Functions ===
+    function validateValue(parameterName, value) {
+        const numValue = parseFloat(value);
+        if (isNaN(numValue)) return { valid: true, level: 'normal', message: '' };
+        
+        let result = { valid: true, level: 'normal', message: '' };
+        
+        if (parameterName.includes("Age")) {
+            if (numValue < 18) {
+                result.level = 'error';
+                result.message = '年齡應 ≥18 歲';
+            } else if (numValue > 120) {
+                result.level = 'error';
+                result.message = '年齡超出合理範圍';
+            } else if (numValue >= 75) {
+                result.level = 'warning';
+                result.message = '高齡患者（≥75歲）為高出血風險';
+            }
+        } else if (parameterName.includes("Hemoglobin")) {
+            const unit = unitSettings.hemoglobin || 'g/dL';
+            if (unit === 'g/dL') {
+                if (numValue < 5) {
+                    result.level = 'error';
+                    result.message = '嚴重貧血 (<5 g/dL)';
+                } else if (numValue < 11) {
+                    result.level = 'error';
+                    result.message = '重度貧血 (<11 g/dL) - 高風險';
+                } else if (numValue < 13) {
+                    result.level = 'warning';
+                    result.message = '輕中度貧血 (11-13 g/dL)';
+                } else if (numValue > 18) {
+                    result.level = 'warning';
+                    result.message = '血紅素過高，請確認數值';
+                }
+            }
+        } else if (parameterName.includes("eGFR")) {
+            if (numValue < 15) {
+                result.level = 'error';
+                result.message = '嚴重腎功能不全 (<15) - 高風險';
+            } else if (numValue < 30) {
+                result.level = 'error';
+                result.message = '中重度腎功能不全 (<30) - 高風險';
+            } else if (numValue < 60) {
+                result.level = 'warning';
+                result.message = '輕中度腎功能不全 (30-60)';
+            } else if (numValue > 150) {
+                result.level = 'warning';
+                result.message = 'eGFR 過高，請確認數值';
+            }
+        } else if (parameterName.includes("White Blood Cell")) {
+            if (numValue < 2) {
+                result.level = 'error';
+                result.message = '白血球過低 (<2) - 可能有感染風險';
+            } else if (numValue < 4) {
+                result.level = 'warning';
+                result.message = '白血球偏低 (2-4)';
+            } else if (numValue > 15) {
+                result.level = 'error';
+                result.message = '白血球過高 (>15) - 提示炎症或感染';
+            } else if (numValue > 11) {
+                result.level = 'warning';
+                result.message = '白血球偏高 (11-15)';
+            }
+        }
+        
+        return result;
+    }
+    
+    function applyValidationStyling(inputElement, validation) {
+        // Remove all validation classes
+        inputElement.classList.remove('value-normal', 'value-warning', 'value-error');
+        
+        // Apply appropriate class
+        if (validation.level === 'error') {
+            inputElement.classList.add('value-error');
+        } else if (validation.level === 'warning') {
+            inputElement.classList.add('value-warning');
+        } else {
+            inputElement.classList.add('value-normal');
+        }
+        
+        // Show/hide validation message
+        const inputGroup = inputElement.closest('.input-group') || inputElement.parentElement;
+        const container = inputGroup.parentElement;
+        
+        // First, remove any existing validation messages for this input
+        const existingMessages = container.querySelectorAll('.validation-message');
+        existingMessages.forEach(msg => msg.remove());
+        
+        // Then create new message if needed
+        if (validation.message) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'validation-message';
+            messageDiv.style.fontSize = '0.85rem';
+            messageDiv.style.marginTop = '3px';
+            messageDiv.textContent = validation.message;
+            messageDiv.style.color = validation.level === 'error' ? '#dc3545' : '#ffc107';
+            container.appendChild(messageDiv);
+        }
+    }
+    
+    // === NEW: Generate Tooltip HTML ===
+    function generateTooltip(parameterKey) {
+        const tooltip = clinicalTooltips[parameterKey];
+        if (!tooltip) return '';
+        
+        return `
+            <span class="info-tooltip">
+                <i class="fas fa-info-circle"></i>
+                <span class="tooltip-content">
+                    <strong>${tooltip.title}</strong><br><br>
+                    ${tooltip.content}<br><br>
+                    <strong>正常範圍:</strong><br>${tooltip.normalRange}<br><br>
+                    <strong>風險因子:</strong><br>${tooltip.riskFactors}
+                </span>
+            </span>
+        `;
+    }
+
+    function formatValueWithUnit(value, unit) {
+        // Format the value nicely with appropriate decimal places
+        if (typeof value === 'number') {
+            if (unit === "years") return Math.round(value);
+            if (unit === "g/dL" || unit === "mmol/L") return value.toFixed(2);
+            if (unit === "mL/min/1.73m²") return Math.round(value);
+            if (unit === "×10⁹/L") return value.toFixed(2);
+            return value.toFixed(2);
+        }
+        return value;
+    }
+    
+    // === NEW: Handle input with validation ===
+    function handleValueInput(parameterName, inputElement) {
+        // Validate the input
+        const validation = validateValue(parameterName, inputElement.value);
+        
+        // Apply styling based on validation
+        applyValidationStyling(inputElement, validation);
+        
+        // Recalculate risk
         recalculateAndRefreshUI();
     }
 
     function renderInteractiveTable() {
         const componentsBody = document.getElementById('score-components');
         componentsBody.innerHTML = ''; // Clear previous content
+        
+        // Track missing data for warning display
+        let missingDataItems = [];
 
         if (scoreComponentData && scoreComponentData.length > 0) {
             scoreComponentData.forEach(item => {
+                // Skip Base Score - don't display it
+                if (item.parameter && item.parameter.includes("Base Score")) {
+                    return;
+                }
+                
                 const cleanParameterName = translateParameterName(item.parameter || 'Unnamed Criterion');
                 let valueControl = '';
+                const unit = getUnitForParameter(item.parameter);
+                
+                // Check if this is missing data
+                const isMissingData = (item.value === 'Not available' || item.value === 'N/A' || 
+                                      (item.raw_value === null && item.is_present === null));
 
-                // Create an input for numbers, a checkbox for booleans
+                // Create an input for numbers, a checkbox for booleans, or manual input for missing data
                 if (item.raw_value !== null && typeof item.raw_value === 'number') {
-                    valueControl = `<input type="number" class="form-control form-control-sm" id="input-${item.parameter}" value="${item.raw_value}" oninput="recalculateAndRefreshUI()">`;
+                    const formattedValue = formatValueWithUnit(item.raw_value, unit);
+                    const step = unit === "years" ? "1" : "0.01";
+                    
+                    // Add unit toggle button for Hemoglobin
+                    const unitToggleBtn = item.parameter.includes("Hemoglobin") ? 
+                        `<button type="button" class="unit-toggle-btn" onclick="toggleHemoglobinUnit(document.getElementById('input-${item.parameter}'))" title="切換單位">⇄</button>` : '';
+                    
+                    valueControl = `
+                        <div class="input-group" style="font-size: 1.2rem;">
+                            <input type="number" 
+                                   class="form-control" 
+                                   id="input-${item.parameter}" 
+                                   value="${formattedValue}" 
+                                   step="${step}"
+                                   style="font-size: 1.2rem; font-weight: 600;"
+                                   oninput="handleValueInput('${item.parameter}', this)">
+                            ${unit ? `<span class="input-group-text" style="font-size: 1.1rem; font-weight: 500; background-color: #e9ecef;">${unit}</span>` : ''}
+                            ${unitToggleBtn}
+                        </div>
+                    `;
                 } else if (item.is_present !== null && typeof item.is_present === 'boolean') {
                     const checked = item.is_present ? 'checked' : '';
+                    // Check if this is an ARC-HBR element (should not have editable score)
+                    const isArcElement = item.is_arc_hbr_element === true;
                     valueControl = `
                         <div class="form-check form-switch">
-                            <input class="form-check-input" type="checkbox" id="input-${item.parameter}" ${checked} onchange="recalculateAndRefreshUI()">
-                            <label class="form-check-label" for="input-${item.parameter}">${item.value}</label>
+                            <input class="form-check-input" 
+                                   type="checkbox" 
+                                   id="input-${item.parameter}" 
+                                   ${checked} 
+                                   style="width: 3em; height: 1.5em;"
+                                   data-is-arc-element="${isArcElement}"
+                                   onchange="recalculateAndRefreshUI()">
+                            <label class="form-check-label" 
+                                   for="input-${item.parameter}" 
+                                   style="font-size: 1.2rem; font-weight: 500; margin-left: 0.5rem;">
+                                ${item.value}
+                            </label>
+                        </div>
+                    `;
+                } else if (isMissingData) {
+                    // Missing data - provide manual input option
+                    missingDataItems.push(cleanParameterName);
+                    const step = unit === "years" ? "1" : "0.01";
+                    const placeholder = unit ? `Enter value in ${unit}` : "Enter value";
+                    
+                    // Add unit toggle button for Hemoglobin
+                    const unitToggleBtn = item.parameter.includes("Hemoglobin") ? 
+                        `<button type="button" class="unit-toggle-btn" onclick="toggleHemoglobinUnit(document.getElementById('input-${item.parameter}'))" title="切換單位">⇄</button>` : '';
+                    
+                    valueControl = `
+                        <div class="input-group" style="font-size: 1.2rem;">
+                            <input type="number" 
+                                   class="form-control" 
+                                   id="input-${item.parameter}" 
+                                   placeholder="${placeholder}" 
+                                   step="${step}"
+                                   data-missing="true"
+                                   style="font-size: 1.2rem; font-weight: 600; border: 2px solid #ffc107; background-color: #fff3cd;"
+                                   oninput="handleValueInput('${item.parameter}', this)">
+                            ${unit ? `<span class="input-group-text" style="font-size: 1.1rem; font-weight: 500; background-color: #fff3cd; border: 2px solid #ffc107; border-left: none;">${unit}</span>` : ''}
+                            <span class="input-group-text" style="background-color: #fff3cd; border: 2px solid #ffc107; border-left: none;">
+                                <i class="fas fa-exclamation-triangle text-warning" title="Missing data - please enter manually if available"></i>
+                            </span>
+                            ${unitToggleBtn}
                         </div>
                     `;
                 } else {
-                    valueControl = `<span>${item.value}</span>`; // Fallback for base score or others
+                    valueControl = `<span style="font-size: 1.2rem; font-weight: 500;">${item.value}</span>`; // Fallback for base score or others
                 }
 
+                // Generate score badge cell - hide for ARC-HBR elements
+                let scoreBadgeHtml = '';
+                if (item.is_arc_hbr_element === true) {
+                    // Don't show score for ARC-HBR elements
+                    scoreBadgeHtml = '<span class="text-muted" style="font-size: 0.9rem;">—</span>';
+                } else {
+                    scoreBadgeHtml = `<span class="badge bg-primary" id="score-${item.parameter}" style="font-size: 1.1rem; padding: 0.5rem 0.8rem;">${item.score}</span>`;
+                }
+                
+                // Generate tooltip for clinical information
+                const tooltipKey = cleanParameterName.split('(')[0].trim();
+                const tooltipHtml = generateTooltip(tooltipKey);
+                
                 const row = `
                     <tr>
-                        <td>${cleanParameterName}</td>
+                        <td style="font-size: 1.2rem;">
+                            ${cleanParameterName}
+                            ${tooltipHtml}
+                        </td>
                         <td>${valueControl}</td>
-                        <td><span class="badge" id="score-${item.parameter}">${item.score}</span></td>
-                        <td>${item.date || 'N/A'}</td>
+                        <td>${scoreBadgeHtml}</td>
+                        <td style="font-size: 1.1rem;">${item.date || 'N/A'}</td>
                     </tr>
                 `;
                 componentsBody.innerHTML += row;
             });
+            
+            // Display missing data warning if any
+            displayMissingDataWarning(missingDataItems);
         } else {
             const row = `<tr><td colspan="4" class="text-center">No risk components available for editing.</td></tr>`;
             componentsBody.innerHTML = row;
         }
     }
+    
+    function displayMissingDataWarning(missingItems) {
+        const warningDiv = document.getElementById('missing-data-warning');
+        const missingList = document.getElementById('missing-data-list');
+        
+        if (missingItems && missingItems.length > 0) {
+            // Build the list of missing items
+            missingList.innerHTML = '';
+            missingItems.forEach(item => {
+                const li = document.createElement('li');
+                li.textContent = item;
+                li.style.marginBottom = '0.25rem';
+                missingList.appendChild(li);
+            });
+            
+            // Show the warning
+            warningDiv.style.display = 'block';
+        } else {
+            // Hide the warning if no missing data
+            warningDiv.style.display = 'none';
+        }
+    }
 
     function recalculateAndRefreshUI() {
+        // Check for critical data before calculating
+        const requiredParameters = ['Age', 'Hemoglobin', 'eGFR', 'White Blood Cell'];
+        const missingCriticalData = [];
+        
+        scoreComponentData.forEach(item => {
+            const paramName = item.parameter || '';
+            requiredParameters.forEach(required => {
+                if (paramName.includes(required)) {
+                    const inputElement = document.getElementById(`input-${item.parameter}`);
+                    if (inputElement && inputElement.type === 'number') {
+                        // Check if the input is empty or has no valid value
+                        const isEmpty = !inputElement.value || inputElement.value.trim() === '';
+                        if (isEmpty) {
+                            missingCriticalData.push(required);
+                        }
+                    }
+                }
+            });
+        });
+
+        // If critical data is missing, show warning in the Total Risk Score area
+        if (missingCriticalData.length > 0) {
+            // Show warning message instead of risk score
+            document.getElementById('total-score').innerHTML = `
+                <i class="fas fa-exclamation-triangle text-warning"></i>
+            `;
+            document.getElementById('risk-level').innerHTML = `
+                <span class="text-warning">資訊不完整</span>
+            `;
+            document.getElementById('recommendation').innerHTML = `
+                <div class="alert alert-warning mb-0" role="alert">
+                    <strong><i class="fas fa-edit"></i> 請填入以下缺少的資料：</strong>
+                    <ul class="mb-0 mt-2">
+                        ${missingCriticalData.map(param => {
+                            let displayName = param;
+                            if (param === 'Age') displayName = 'Age（年齡）';
+                            if (param === 'Hemoglobin') displayName = 'Hemoglobin（血紅素）';
+                            if (param === 'eGFR') displayName = 'eGFR（腎絲球過濾率）';
+                            if (param === 'White Blood Cell') displayName = 'White Blood Cell（白血球）';
+                            return `<li><strong>${displayName}</strong></li>`;
+                        }).join('')}
+                    </ul>
+                    <p class="mb-0 mt-2"><small>填入完整資料後，風險分數將自動計算。</small></p>
+                </div>
+            `;
+            
+            // Hide CCD export button when data is incomplete
+            document.getElementById('exportCcdBtn').style.display = 'none';
+            
+            return; // Stop calculation but keep UI visible
+        }
+
+        // If we get here, all critical data is present
+        // Show CCD export button
+        document.getElementById('exportCcdBtn').style.display = 'inline-block';
+
         let totalScoreRaw = 0;
         
         // Find the base score from the original data and add it.
         const baseScoreItem = scoreComponentData.find(c => c.parameter.includes("Base Score"));
         totalScoreRaw += baseScoreItem ? baseScoreItem.score : 2;
 
+        // Track ARC-HBR elements state for calculating the summary score
+        let arcHbrElementsChecked = 0;
+
         scoreComponentData.forEach(item => {
             if (item.parameter.includes("Base Score")) return; // Skip base score, already added
+            if (item.parameter.includes("ARC-HBR Summary")) return; // Skip summary, will calculate later
 
             let currentScore = 0;
             let currentScoreRaw = 0;
@@ -303,28 +1055,61 @@
             if (!inputElement) return;
 
             if (inputElement.type === 'number') {
-                const value = parseFloat(inputElement.value) || 0;
-                // Replicate backend calculation logic
-                if (item.parameter.includes("Age")) {
-                    const effective = Math.max(30, Math.min(80, value));
-                    if (effective > 30) currentScoreRaw = (effective - 30) * 0.25;
-                } else if (item.parameter.includes("Hemoglobin")) {
-                    const effective = Math.max(5.0, Math.min(15.0, value));
-                    if (effective < 15) currentScoreRaw = (15 - effective) * 2.5;
-                } else if (item.parameter.includes("eGFR")) {
-                    const effective = Math.max(5, Math.min(100, value));
-                    if (effective < 100) currentScoreRaw = (100 - effective) * 0.05;
-                } else if (item.parameter.includes("White Blood Cell")) {
-                    const effective = Math.min(15.0, value);
-                    if (effective > 3.0) currentScoreRaw = (effective - 3.0) * 0.8;
+                // Check if this was originally missing data
+                const isMissingData = inputElement.getAttribute('data-missing') === 'true';
+                
+                // Only calculate if we have a value (not empty)
+                if (inputElement.value && inputElement.value.trim() !== '') {
+                    const value = parseFloat(inputElement.value);
+                    
+                    // Replicate backend calculation logic
+                    if (item.parameter.includes("Age")) {
+                        const effective = Math.max(30, Math.min(80, value));
+                        if (effective > 30) currentScoreRaw = (effective - 30) * 0.25;
+                    } else if (item.parameter.includes("Hemoglobin")) {
+                        // Convert to g/dL if needed for calculation
+                        let hbValue = value;
+                        if (unitSettings.hemoglobin === 'mmol/L') {
+                            hbValue = convertHemoglobin(value, 'mmol/L', 'g/dL');
+                        }
+                        const effective = Math.max(5.0, Math.min(15.0, hbValue));
+                        if (effective < 15) currentScoreRaw = (15 - effective) * 2.5;
+                    } else if (item.parameter.includes("eGFR")) {
+                        const effective = Math.max(5, Math.min(100, value));
+                        if (effective < 100) currentScoreRaw = (100 - effective) * 0.05;
+                    } else if (item.parameter.includes("White Blood Cell")) {
+                        const effective = Math.min(15.0, value);
+                        if (effective > 3.0) currentScoreRaw = (effective - 3.0) * 0.8;
+                    }
+                    
+                    // If user manually entered data, update styling to show it's no longer missing
+                    if (isMissingData) {
+                        inputElement.style.border = '1px solid #ced4da';
+                        inputElement.style.backgroundColor = '#fff';
+                        const inputGroup = inputElement.closest('.input-group');
+                        if (inputGroup) {
+                            const unitSpans = inputGroup.querySelectorAll('.input-group-text');
+                            unitSpans.forEach(span => {
+                                span.style.border = '1px solid #ced4da';
+                                span.style.backgroundColor = '#e9ecef';
+                            });
+                        }
+                    }
                 }
+                // Note: If input is empty, we already checked for critical data at the start
+                // Non-critical empty fields (Previous bleeding, OAC) will simply contribute 0 score
             } else if (inputElement.type === 'checkbox') {
                 const isChecked = inputElement.checked;
                 const label = document.querySelector(`label[for='${inputElement.id}']`);
+                const isArcElement = inputElement.getAttribute('data-is-arc-element') === 'true';
+                
                 if (isChecked) {
                     if (item.parameter.includes("Prior Bleeding")) currentScoreRaw = 7;
                     if (item.parameter.includes("Oral Anticoagulation")) currentScoreRaw = 5;
-                    if (item.parameter.includes("ARC-HBR")) currentScoreRaw = 3;
+                    // Individual ARC-HBR elements don't add score directly
+                    if (isArcElement) {
+                        arcHbrElementsChecked++;
+                    }
                     if(label) label.textContent = "Yes";
                 } else {
                     if(label) label.textContent = "No";
@@ -334,49 +1119,105 @@
             totalScoreRaw += currentScoreRaw;
             currentScore = Math.round(currentScoreRaw);
 
-            // Update individual score badge
+            // Update individual score badge (but not for ARC-HBR elements)
             const scoreBadge = document.getElementById(`score-${item.parameter}`);
-            if(scoreBadge) {
+            if(scoreBadge && !item.is_arc_hbr_element) {
                 scoreBadge.textContent = currentScore;
                 scoreBadge.className = `badge ${currentScore > 0 ? 'bg-danger' : 'bg-secondary'}`;
             }
         });
         
+        // Calculate ARC-HBR Summary score (3 points if any element is checked)
+        const arcHbrSummaryScore = arcHbrElementsChecked > 0 ? 3 : 0;
+        totalScoreRaw += arcHbrSummaryScore;
+        
+        // Update ARC-HBR Summary badge
+        const arcHbrSummaryItem = scoreComponentData.find(c => c.parameter.includes("ARC-HBR Summary"));
+        if (arcHbrSummaryItem) {
+            const arcSummaryBadge = document.getElementById(`score-${arcHbrSummaryItem.parameter}`);
+            if (arcSummaryBadge) {
+                arcSummaryBadge.textContent = arcHbrSummaryScore;
+                arcSummaryBadge.className = `badge ${arcHbrSummaryScore > 0 ? 'bg-danger' : 'bg-secondary'}`;
+            }
+        }
+        
         const finalScore = Math.round(totalScoreRaw);
         updateTotalScoreUI(finalScore);
+        
+        // Update missing data warning after recalculation
+        updateMissingDataWarning();
+    }
+    
+    function updateMissingDataWarning() {
+        // Check for any remaining missing data (empty input fields with data-missing="true")
+        const missingInputs = document.querySelectorAll('input[data-missing="true"]');
+        const remainingMissingItems = [];
+        
+        missingInputs.forEach(input => {
+            if (!input.value || input.value.trim() === '') {
+                // Find the corresponding parameter name
+                const row = input.closest('tr');
+                if (row) {
+                    const parameterCell = row.querySelector('td:first-child');
+                    if (parameterCell) {
+                        remainingMissingItems.push(parameterCell.textContent.trim());
+                    }
+                }
+            }
+        });
+        
+        // Update the warning display
+        displayMissingDataWarning(remainingMissingItems);
     }
     
     function updateTotalScoreUI(score) {
-        document.getElementById('total-score').textContent = score;
+        const totalScoreEl = document.getElementById('total-score');
         const riskLevelEl = document.getElementById('risk-level');
         
         let riskCategory = "";
         let colorClass = "";
+        let scoreColor = "";
         let recommendation = "";
         let riskPercent = 0;
         
+        // Determine risk level and colors
         // Replicate bleeding risk percentage and category logic from backend
         if (score <= 22) {
             riskPercent = 0.5 + (score / 22) * 3.0;
             riskCategory = `Not high bleeding risk (score ≤22)`;
             colorClass = 'text-success';
+            scoreColor = '#28a745'; // 綠色 (green)
         } else if (score <= 26) {
             riskPercent = 3.5 + ((score - 22) / 4) * 2.0;
             riskCategory = `HBR (score 23-26)`;
             colorClass = 'text-warning';
+            scoreColor = '#fd7e14'; // 橘色 (orange)
         } else { // score >= 27
              riskPercent = 5.5 + ((score - 26) / 4) * 2.5;
              if (score > 30) riskPercent = 8.0 + ((score - 30) / 5) * 4.0;
              if (score > 35) riskPercent = 12.0 + ((score - 35) / 10) * 3.0;
              riskCategory = `Very HBR (score ≥27)`;
              colorClass = 'text-danger';
+             scoreColor = '#dc3545'; // 紅色 (red)
         }
         riskPercent = Math.min(15.0, riskPercent);
         recommendation = `1-year risk of major bleeding: ${riskPercent.toFixed(2)}% (Bleeding Academic Research Consortium [BARC] type 3 or 5)`;
 
+        // Apply color and bold to total score
+        totalScoreEl.textContent = score;
+        totalScoreEl.style.color = scoreColor;
+        totalScoreEl.style.fontWeight = '900'; // Extra bold
+        
         riskLevelEl.textContent = riskCategory;
         riskLevelEl.className = `h4 ${colorClass}`;
         document.getElementById('recommendation').textContent = recommendation;
+        
+        // Update currentPatientData with latest score and risk level
+        if (currentPatientData) {
+            currentPatientData.total_score = score;
+            currentPatientData.risk_level = riskCategory;
+            currentPatientData.recommendation = recommendation;
+        }
         
         // --- NEW: Add/Remove Tradeoff Analysis Link ---
         const totalScoreCard = document.getElementById('risk-level').parentElement;
@@ -399,6 +1240,20 @@
                 </a>`;
             totalScoreCard.appendChild(tradeoffDiv);
         }
+        
+        // --- NEW: Show/Hide HBR Recommendations Section ---
+        const hbrRecommendationsSection = document.getElementById('hbr-recommendations-section');
+        if (score >= 23) {
+            // Show HBR recommendations with smooth animation
+            hbrRecommendationsSection.style.display = 'block';
+            // Smooth scroll to recommendations after a brief delay
+            setTimeout(() => {
+                hbrRecommendationsSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }, 500);
+        } else {
+            // Hide HBR recommendations if score drops below threshold
+            hbrRecommendationsSection.style.display = 'none';
+        }
     }
 
     function displayError(errorMessage) {
@@ -415,9 +1270,14 @@
             'PRECISE-HBR - Hemoglobin': 'Hemoglobin (truncated 5-15 g/dL)',
             'PRECISE-HBR - eGFR': 'eGFR (truncated above 100)',
             'PRECISE-HBR - White Blood Cell Count': 'White Blood Cell Count (truncated above 15×10³)',
-            'PRECISE-HBR - Prior Bleeding': 'Previous Bleeding History',
-            'PRECISE-HBR - Oral Anticoagulation': 'Long-term Oral Anticoagulation',
-            'PRECISE-HBR - ARC-HBR Factors': 'ARC-HBR Elements ≥1'
+            'PRECISE-HBR - Prior Bleeding': 'Previous bleeding',
+            'PRECISE-HBR - Oral Anticoagulation': 'Long-term oral anticoagulation',
+            'PRECISE-HBR - Platelet Count': 'Platelet count <100 ×10⁹/L',
+            'PRECISE-HBR - Chronic Bleeding Diathesis': 'Chronic bleeding diathesis',
+            'PRECISE-HBR - Liver Cirrhosis': 'Liver cirrhosis with portal hypertension',
+            'PRECISE-HBR - Active Malignancy': 'Active malignancy',
+            'PRECISE-HBR - NSAIDs/Corticosteroids': 'Chronic use of nsaids or corticosteroids',
+            'PRECISE-HBR - ARC-HBR Summary': 'ARC-HBR Elements ≥1'
         };
         
         return translations[parameterName] || parameterName;
@@ -540,10 +1400,515 @@
         // Reset feedback type
         currentFeedbackType = null;
     }
+
+    // ==========================================================================
+    // ONC COMPLIANCE: 45 CFR 170.315 (b)(6) - Data Export (CCD)
+    // Export risk assessment results as C-CDA Continuity of Care Document
+    // ==========================================================================
+    
+    function exportCCD() {
+        if (!currentPatientData) {
+            alert('No patient data available for export. Please calculate risk first.');
+            return;
+        }
+        
+        // Check if required risk data exists
+        if (!currentPatientData.total_score || !currentPatientData.risk_level) {
+            alert('Risk score is incomplete. Please ensure all required data (Age, Hemoglobin, eGFR, WBC) is filled in.');
+            return;
+        }
+        
+        // Show loading state on button
+        const exportBtn = document.getElementById('exportCcdBtn');
+        const originalHtml = exportBtn.innerHTML;
+        exportBtn.disabled = true;
+        exportBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+        
+        // Prepare data for CCD export
+        const exportData = {
+            patient_name: currentPatientData.patient_info.name || 'Unknown Patient',
+            patient_gender: currentPatientData.patient_info.gender || 'Unknown',
+            patient_birth_date: calculateBirthDate(currentPatientData.patient_info.age),
+            patient_age: currentPatientData.patient_info.age || 'Unknown',
+            risk_data: {
+                total_score: currentPatientData.total_score,
+                risk_category: currentPatientData.risk_level,
+                bleeding_risk_percent: extractBleedingRiskPercent(currentPatientData.recommendation),
+                egfr: getParameterValue('eGFR'),
+                hemoglobin: getParameterValue('Hemoglobin'),
+                wbc: getParameterValue('White Blood Cell'),
+                platelets: getParameterValue('Platelets'),
+                arc_hbr_factors: getARCHBRFactors()
+            }
+        };
+        
+        // Debug: Log the export data in detail
+        console.log('=== CCD Export Debug ===');
+        console.log('Full Export Data:', exportData);
+        console.log('Risk Data:', exportData.risk_data);
+        console.log('Total Score:', exportData.risk_data.total_score);
+        console.log('Risk Category:', exportData.risk_data.risk_category);
+        console.log('currentPatientData:', currentPatientData);
+        
+        // Send POST request to export API
+        fetch('/api/export-ccd', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(exportData)
+        })
+        .then(async response => {
+            console.log('Response status:', response.status);
+            console.log('Response headers:', response.headers);
+            const contentType = response.headers.get('content-type');
+            console.log('Content-Type:', contentType);
+            
+            if (!response.ok) {
+                // Try to get error details from response
+                let errorMessage = `Server error: ${response.status} ${response.statusText}`;
+                
+                // Clone the response so we can try multiple parsing methods
+                const responseClone = response.clone();
+                
+                try {
+                    // Check if response is JSON
+                    if (contentType && contentType.includes('application/json')) {
+                        const errorData = await response.json();
+                        console.error('Server error details:', errorData);
+                        console.error('Error message:', errorData.error);
+                        console.error('Error details:', errorData.details);
+                        console.error('Received fields:', errorData.received_fields);
+                        console.error('Missing fields:', errorData.missing_fields);
+                        
+                        errorMessage = errorData.error || errorData.details || errorMessage;
+                        if (errorData.missing_fields && errorData.missing_fields.length > 0) {
+                            errorMessage += `\nMissing fields: ${errorData.missing_fields.join(', ')}`;
+                        }
+                    } else {
+                        // Response is HTML or text
+                        const textResponse = await responseClone.text();
+                        console.error('Response text (first 500 chars):', textResponse.substring(0, 500));
+                        
+                        // Try to extract error message from HTML
+                        const errorMatch = textResponse.match(/<title>(.*?)<\/title>/i);
+                        if (errorMatch) {
+                            errorMessage = errorMatch[1];
+                        }
+                    }
+                } catch (parseError) {
+                    console.error('Failed to parse error response:', parseError);
+                }
+                
+                throw new Error(errorMessage);
+            }
+            return response.blob();
+        })
+        .then(blob => {
+            // Create download link
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `PRECISE_HBR_CCD_${currentPatientData.patient_info.patient_id || 'patient'}_${new Date().toISOString().split('T')[0]}.xml`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            
+            // Show success message
+            alert('CCD document exported successfully!');
+        })
+        .catch(error => {
+            console.error('Error exporting CCD:', error);
+            alert(`Failed to export CCD document:\n\n${error.message}\n\nPlease check the browser console for more details.`);
+        })
+        .finally(() => {
+            // Restore button state
+            exportBtn.disabled = false;
+            exportBtn.innerHTML = originalHtml;
+        });
+    }
+    
+    // Helper function to calculate approximate birth date from age
+    function calculateBirthDate(age) {
+        if (!age || age === 'N/A') {
+            return '1970-01-01';
+        }
+        const currentYear = new Date().getFullYear();
+        const birthYear = currentYear - parseInt(age);
+        return `${birthYear}-01-01`;
+    }
+    
+    // Helper function to extract bleeding risk percentage from recommendation text
+    function extractBleedingRiskPercent(recommendation) {
+        if (!recommendation) return 'N/A';
+        const match = recommendation.match(/(\d+\.?\d*)%/);
+        return match ? match[1] : 'N/A';
+    }
+    
+    // Helper function to get parameter value from current data
+    function getParameterValue(parameterName) {
+        if (!currentPatientData || !currentPatientData.score_components) {
+            return 'Not available';
+        }
+        
+        const component = currentPatientData.score_components.find(c => 
+            c.parameter.includes(parameterName)
+        );
+        
+        if (!component) {
+            return 'Not available';
+        }
+        
+        // For CCD export, return only the numeric raw_value (CCD generator adds units)
+        if (component.raw_value !== null && component.raw_value !== undefined) {
+            return component.raw_value;
+        }
+        
+        // For boolean values, return the is_present status
+        if (component.is_present !== null && component.is_present !== undefined) {
+            return component.is_present ? 'Present' : 'Absent';
+        }
+        
+        return component.value || 'Not available';
+    }
+    
+    // Helper function to extract ARC-HBR factors
+    function getARCHBRFactors() {
+        const factors = [];
+        
+        if (!currentPatientData || !currentPatientData.score_components) {
+            return factors;
+        }
+        
+        // Check for prior bleeding
+        const priorBleeding = currentPatientData.score_components.find(c => 
+            c.parameter.includes('Prior Bleeding')
+        );
+        if (priorBleeding && priorBleeding.value === true) {
+            factors.push('Prior spontaneous bleeding requiring hospitalization or transfusion');
+        }
+        
+        // Check for oral anticoagulation
+        const oralAnticoag = currentPatientData.score_components.find(c => 
+            c.parameter.includes('Oral Anticoagulation')
+        );
+        if (oralAnticoag && oralAnticoag.value === true) {
+            factors.push('Long-term oral anticoagulation therapy');
+        }
+        
+        // Check for other ARC-HBR factors
+        const arcHBR = currentPatientData.score_components.find(c => 
+            c.parameter.includes('ARC-HBR')
+        );
+        if (arcHBR && arcHBR.value === true) {
+            factors.push('One or more ARC-HBR major or minor criteria');
+        }
+        
+        return factors;
+    }
+
+    // ==========================================================================
+    // ONC COMPLIANCE: 45 CFR 170.315 (d)(5) - Automatic Access Time-out
+    // Automatically stop user access after predetermined period of inactivity
+    // ==========================================================================
+    
+    (function() {
+        // Configuration
+        const INACTIVITY_TIMEOUT = 5 * 60 * 1000; // 5 minutes in milliseconds
+        const WARNING_BEFORE_TIMEOUT = 60 * 1000;  // Show warning 1 minute before timeout
+        
+        let inactivityTimer = null;
+        let warningTimer = null;
+        let warningModal = null;
+        
+        // Events that indicate user activity
+        const activityEvents = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
+        
+        function resetInactivityTimer() {
+            // Clear existing timers
+            if (inactivityTimer) clearTimeout(inactivityTimer);
+            if (warningTimer) clearTimeout(warningTimer);
+            if (warningModal) closeWarningModal();
+            
+            // Set warning timer (fires 1 minute before actual timeout)
+            warningTimer = setTimeout(showTimeoutWarning, INACTIVITY_TIMEOUT - WARNING_BEFORE_TIMEOUT);
+            
+            // Set actual timeout timer
+            inactivityTimer = setTimeout(performLogout, INACTIVITY_TIMEOUT);
+        }
+        
+        function showTimeoutWarning() {
+            // Create modal if it doesn't exist
+            if (!warningModal) {
+                warningModal = document.createElement('div');
+                warningModal.className = 'modal fade show';
+                warningModal.style.display = 'block';
+                warningModal.style.backgroundColor = 'rgba(0,0,0,0.5)';
+                warningModal.innerHTML = `
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content">
+                            <div class="modal-header bg-warning text-dark">
+                                <h5 class="modal-title">
+                                    <i class="fas fa-exclamation-triangle"></i> Session Timeout Warning
+                                </h5>
+                            </div>
+                            <div class="modal-body">
+                                <p><strong>Your session will expire in 1 minute due to inactivity.</strong></p>
+                                <p>For security purposes, access to patient information is automatically stopped after 5 minutes of inactivity.</p>
+                                <p>Click "Stay Logged In" to continue working, or you will be automatically logged out.</p>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-primary" id="stay-logged-in-btn">
+                                    <i class="fas fa-check"></i> Stay Logged In
+                                </button>
+                                <button type="button" class="btn btn-secondary" id="logout-now-btn">
+                                    <i class="fas fa-sign-out-alt"></i> Logout Now
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(warningModal);
+                
+                // Attach event handlers
+                document.getElementById('stay-logged-in-btn').addEventListener('click', function() {
+                    closeWarningModal();
+                    resetInactivityTimer(); // Reset the timer as if user was active
+                });
+                
+                document.getElementById('logout-now-btn').addEventListener('click', function() {
+                    performLogout();
+                });
+            } else {
+                warningModal.style.display = 'block';
+            }
+        }
+        
+        function closeWarningModal() {
+            if (warningModal) {
+                warningModal.style.display = 'none';
+            }
+        }
+        
+        function performLogout() {
+            // Clear all timers
+            if (inactivityTimer) clearTimeout(inactivityTimer);
+            if (warningTimer) clearTimeout(warningTimer);
+            
+            // Remove event listeners to prevent further activity tracking
+            activityEvents.forEach(function(eventName) {
+                document.removeEventListener(eventName, resetInactivityTimer, true);
+            });
+            
+            // Display logout message
+            const body = document.body;
+            body.innerHTML = `
+                <div class="container mt-5">
+                    <div class="row justify-content-center">
+                        <div class="col-md-6">
+                            <div class="card border-warning">
+                                <div class="card-header bg-warning text-dark">
+                                    <h4><i class="fas fa-clock"></i> Session Expired</h4>
+                                </div>
+                                <div class="card-body text-center">
+                                    <p class="lead">Your session has been automatically ended due to inactivity.</p>
+                                    <p>This is a security measure to protect patient information.</p>
+                                    <hr>
+                                    <p class="text-muted">
+                                        <small>
+                                            <i class="fas fa-shield-alt"></i> 
+                                            Compliant with ONC 45 CFR 170.315 (d)(5) - Automatic Access Time-out (5 minutes)
+                                        </small>
+                                    </p>
+                                    <a href="/" class="btn btn-primary mt-3">
+                                        <i class="fas fa-redo"></i> Return to Login
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Optionally, make a backend call to invalidate the session
+            fetch('/logout', {
+                method: 'POST',
+                credentials: 'same-origin'
+            }).catch(function(err) {
+                console.error('Logout request failed:', err);
+            });
+        }
+        
+        // Attach activity listeners
+        activityEvents.forEach(function(eventName) {
+            document.addEventListener(eventName, resetInactivityTimer, true);
+        });
+        
+        // Start the timer on page load
+        resetInactivityTimer();
+        
+        console.log('ONC Compliance: Automatic session timeout enabled (5 minutes inactivity)');
+    })();
 </script>
 
 <!-- Custom CSS for Feedback Styling -->
 <style>
+    /* Global Font Setting - Apply to body and common elements */
+    body, html {
+        font-family: Arial, sans-serif;
+    }
+    
+    /* Apply Arial to text elements */
+    p, h1, h2, h3, h4, h5, h6, span, div, td, th, label, button, input, select, textarea, a {
+        font-family: Arial, sans-serif;
+    }
+    
+    /* Preserve Font Awesome icons - CRITICAL for icon display */
+    .fas, .far, .fab, .fa, .fal, .fad, 
+    [class^="fa-"], [class*=" fa-"] {
+        font-family: "Font Awesome 6 Free", "Font Awesome 6 Brands", "Font Awesome 5 Free" !important;
+        font-weight: 900;
+    }
+    
+    .far {
+        font-weight: 400 !important;
+    }
+    
+    .fab {
+        font-family: "Font Awesome 6 Brands" !important;
+    }
+    
+    /* === NEW: Responsive Design === */
+    @media (max-width: 768px) {
+        body, p, td, th, label, button, input, select, textarea {
+            font-size: 14px !important;
+        }
+        
+        h1 { font-size: 1.75rem !important; }
+        h2 { font-size: 1.5rem !important; }
+        h3 { font-size: 1.25rem !important; }
+        h4 { font-size: 1.1rem !important; }
+        
+        .display-3 {
+            font-size: 3rem !important;
+        }
+        
+        .card {
+            padding: 15px !important;
+        }
+        
+        .btn {
+            padding: 10px 15px !important;
+            font-size: 14px !important;
+        }
+    }
+    
+    @media (max-width: 480px) {
+        body, p, td, th, label, button, input, select, textarea {
+            font-size: 12px !important;
+        }
+        
+        h1 { font-size: 1.5rem !important; }
+        h2 { font-size: 1.25rem !important; }
+        
+        .display-3 {
+            font-size: 2.5rem !important;
+        }
+        
+        .card {
+            padding: 10px !important;
+        }
+    }
+    
+    /* === NEW: Unit Conversion Button Styling === */
+    .unit-toggle-btn {
+        background: #6c757d;
+        color: white;
+        border: none;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 0.85rem;
+        cursor: pointer;
+        margin-left: 5px;
+        transition: background 0.2s;
+    }
+    
+    .unit-toggle-btn:hover {
+        background: #5a6268;
+    }
+    
+    /* === NEW: Value Warning Styling === */
+    .value-warning {
+        border-color: #ffc107 !important;
+        background-color: #fff3cd !important;
+    }
+    
+    .value-error {
+        border-color: #dc3545 !important;
+        background-color: #f8d7da !important;
+    }
+    
+    .value-normal {
+        border-color: #28a745 !important;
+    }
+    
+    /* === NEW: Tooltip Styling === */
+    .info-tooltip {
+        position: relative;
+        display: inline-block;
+        margin-left: 5px;
+        cursor: help;
+        color: #6c757d;
+    }
+    
+    .info-tooltip:hover {
+        color: #007bff;
+    }
+    
+    .tooltip-content {
+        visibility: hidden;
+        width: 300px;
+        background-color: #2d3748;
+        color: #fff;
+        text-align: left;
+        border-radius: 6px;
+        padding: 12px;
+        position: absolute;
+        z-index: 1000;
+        bottom: 125%;
+        left: 50%;
+        margin-left: -150px;
+        opacity: 0;
+        transition: opacity 0.3s;
+        font-size: 0.9rem;
+        line-height: 1.4;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+    }
+    
+    .tooltip-content::after {
+        content: "";
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        margin-left: -5px;
+        border-width: 5px;
+        border-style: solid;
+        border-color: #2d3748 transparent transparent transparent;
+    }
+    
+    .info-tooltip:hover .tooltip-content {
+        visibility: visible;
+        opacity: 1;
+    }
+    
+    @media (max-width: 768px) {
+        .tooltip-content {
+            width: 250px;
+            margin-left: -125px;
+        }
+    }
+    
     /* Feedback Section Styling */
     .card-header.bg-light {
         background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%) !important;
@@ -592,6 +1957,60 @@
         to {
             opacity: 1;
             transform: translateY(0);
+        }
+    }
+    
+    /* === HBR Recommendations Section Styling === */
+    #hbr-recommendations-section {
+        animation: fadeInUp 0.6s ease-in-out;
+        font-family: Arial, sans-serif;
+    }
+    
+    #hbr-recommendations-section h4,
+    #hbr-recommendations-section h5,
+    #hbr-recommendations-section h6 {
+        font-family: Arial, sans-serif;
+    }
+    
+    #hbr-recommendations-section .alert,
+    #hbr-recommendations-section .card-body {
+        font-family: Arial, sans-serif;
+        font-size: 1rem;
+        line-height: 1.6;
+    }
+    
+    #hbr-recommendations-section ul li {
+        margin-bottom: 0.5rem;
+        font-size: 1rem;
+    }
+    
+    #hbr-recommendations-section .card-header h5 {
+        font-size: 1.15rem;
+    }
+    
+    #hbr-recommendations-section img {
+        transition: transform 0.3s ease;
+        max-height: 600px;
+        object-fit: contain;
+    }
+    
+    #hbr-recommendations-section img:hover {
+        transform: scale(1.02);
+        box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+    }
+    
+    /* Responsive adjustments for HBR section */
+    @media (max-width: 768px) {
+        #hbr-recommendations-section h4 {
+            font-size: 1.25rem;
+        }
+        
+        #hbr-recommendations-section ul li {
+            font-size: 0.95rem;
+        }
+        
+        #hbr-recommendations-section img {
+            max-height: 400px;
         }
     }
 </style>

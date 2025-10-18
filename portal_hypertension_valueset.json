@@ -19,30 +19,29 @@
       ]
     }
   ],
-  "description": "A ValueSet that includes SNOMED CT codes related to portal hypertension and its common manifestations.",
+  "description": "A ValueSet for liver cirrhosis with portal hypertension (肝硬化合併門脈高壓). Requires liver cirrhosis AND additional text-based criteria.",
   "copyright": "This ValueSet includes content from SNOMED CT, which is copyright © 2002+ International Health Terminology Standards Development Organisation (IHTSDO), and distributed by agreement between IHTSDO and HL7. Implementer use of SNOMED CT is not covered by this agreement.",
   "compose": {
     "include": [
       {
         "system": "http://snomed.info/sct",
-        "concept": [
+        "filter": [
           {
-            "code": "74730006",
-            "display": "Portal hypertension (disorder)"
-          },
-          {
-            "code": "37328000",
-            "display": "Esophageal varices (disorder)"
-          },
-          {
-            "code": "199320001",
-            "display": "Esophageal varices with bleeding due to portal hypertension (disorder)"
-          },
-          {
-            "code": "235896002",
-            "display": "Congestive splenomegaly (disorder)"
+            "property": "concept",
+            "op": "is-a",
+            "value": "19943007"
           }
         ]
+      }
+    ]
+  },
+  "expansion": {
+    "identifier": "urn:uuid:liver-cirrhosis-portal-hypertension",
+    "timestamp": "2025-09-29T00:00:00Z",
+    "parameter": [
+      {
+        "name": "additional-criteria",
+        "valueString": "Requires liver cirrhosis (19943007 or descendants) AND at least one of: Ascites, Portal hypertension, Esophageal varices, or Hepatic encephalopathy (text-based matching)"
       }
     ]
   }

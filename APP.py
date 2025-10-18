@@ -1,6 +1,7 @@
 import logging
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, Response
 import os
+import datetime
 from fhirclient import client
 import fhir_data_service
 from dotenv import load_dotenv
@@ -11,6 +12,11 @@ from functools import wraps
 import requests
 from urllib.parse import urlparse
 from flask_wtf.csrf import CSRFProtect
+from flask_session import Session  # For server-side session storage
+# ONC Compliance: Audit logging
+from audit_logger import get_audit_logger, audit_ephi_access, log_user_authentication
+# ONC Compliance: CCD Export
+from ccd_generator import generate_ccd_from_session_data
 
 # --- Google Secret Manager Helper ---
 # Import the Secret Manager client library.
@@ -51,9 +57,11 @@ def get_secret(env_var, default=None):
     
     return value
 
-# Import the blueprint
-from tradeoff_analysis_routes import tradeoff_bp
+# Import the blueprints
+from tradeoff_analysis_routes import tradeoff_bp, calculate_tradeoff_api # Import the blueprint and view
+from hooks import hooks_bp  # Import CDS Hooks blueprint
 from flask_talisman import Talisman
+from flask_cors import CORS
 
 # --- Constants for Cerner ---
 # This is now a more generic check for any Cerner domain.
@@ -63,11 +71,44 @@ CERNER_DOMAIN = 'cerner.com'
 load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = os.urandom(24)
 
-# Configure logging
+# R-01 Risk Mitigation: Ensure FLASK_SECRET_KEY is set from environment
+SECRET_KEY = get_secret('FLASK_SECRET_KEY')
+if not SECRET_KEY:
+    app.logger.error("FATAL: FLASK_SECRET_KEY environment variable must be set for security.")
+    raise ValueError("FLASK_SECRET_KEY environment variable is required but not set.")
+
+app.secret_key = SECRET_KEY
+
+# Configure Flask-Session for server-side session storage
+app.config['SESSION_TYPE'] = 'filesystem'
+app.config['SESSION_PERMANENT'] = False
+# Determine session directory based on environment
+if os.environ.get('GAE_ENV', '').startswith('standard'):
+    # Use secure temp directory for Google App Engine
+    import tempfile
+    app.config['SESSION_FILE_DIR'] = os.path.join(tempfile.gettempdir(), 'flask_session')
+else:
+    app.config['SESSION_FILE_DIR'] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance', 'flask_session')
+
+# Enable secure and HttpOnly cookies
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+# Only require HTTPS cookies in production (App Engine)
+# For local development with HTTP, this must be False
+app.config['SESSION_COOKIE_SECURE'] = os.environ.get('GAE_ENV', '').startswith('standard')  # True only on App Engine
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # Allow cookies in SMART launch context
+
+# Initialize Flask-Session for server-side storage
+Session(app)
+
+# R-03 Risk Mitigation: Configure logging with ePHI protection
+from logging_filter import setup_ephi_logging_filter
+
 logging.basicConfig(level=logging.INFO)
 app.logger.setLevel(logging.DEBUG)
+
+# Install ePHI logging filter for HIPAA compliance
+setup_ephi_logging_filter(app)
 
 # Environment variables are now fetched using our helper function
 CLIENT_ID = get_secret('SMART_CLIENT_ID')
@@ -104,6 +145,7 @@ def render_error_page(title="Error", message="An unexpected error has occurred."
 
 @app.route('/api/calculate_risk', methods=['POST'])
 @login_required
+@audit_ephi_access(action='calculate_risk_score', resource_type='Patient,Observation,Condition')
 def calculate_risk_api():
     """API endpoint for risk score calculation."""
     try:
@@ -118,12 +160,38 @@ def calculate_risk_api():
             patient_id=patient_id,
             client_id=fhir_session_data.get('client_id')
         )
+        # R-05 Risk Mitigation: Improved error handling for external service failures
         if error:
-            raise Exception(f"FHIR data service failed: {error}")
+            if "timeout" in error.lower() or "504" in error or "gateway time-out" in error.lower():
+                app.logger.warning(f"FHIR server timeout for patient {patient_id}: {error}")
+                return jsonify({
+                    'error': 'The FHIR data service is currently experiencing delays. Please try again in a moment.',
+                    'error_type': 'service_timeout',
+                    'details': 'External health record system is temporarily slow'
+                }), 503
+            elif "connection" in error.lower() or "network" in error.lower():
+                app.logger.error(f"FHIR server connection error for patient {patient_id}: {error}")
+                return jsonify({
+                    'error': 'Unable to connect to the health record system. Please check your connection and try again.',
+                    'error_type': 'connection_error',
+                    'details': 'Network connectivity issue with external service'
+                }), 503
+            else:
+                app.logger.error(f"FHIR data service error for patient {patient_id}: {error}")
+                return jsonify({
+                    'error': 'An error occurred while retrieving patient data from the health record system.',
+                    'error_type': 'service_error',
+                    'details': str(error)
+                }), 500
         
         # Explicitly check if the patient data is missing after the call
         if not raw_data or not raw_data.get('patient'):
-            raise Exception("Patient data could not be retrieved from FHIR server.")
+            app.logger.warning(f"No patient data retrieved for patient {patient_id}")
+            return jsonify({
+                'error': 'Patient data could not be found in the health record system.',
+                'error_type': 'data_not_found',
+                'details': 'The specified patient may not exist or you may not have access to their data'
+            }), 404
 
         demographics = fhir_data_service.get_patient_demographics(raw_data.get('patient'))
         score_components, total_score = fhir_data_service.calculate_precise_hbr_score(raw_data, demographics)
@@ -142,16 +210,112 @@ def calculate_risk_api():
             return jsonify({'error': 'FHIR data service is unavailable.', 'details': str(e)}), 503
         return jsonify({'error': 'An internal server error occurred.'}), 500
 
+@app.route('/api/export-ccd', methods=['POST'])
+@login_required
+@audit_ephi_access(action='export_ccd_document', resource_type='Patient,Observation,Condition')
+def export_ccd_api():
+    """
+    ONC Compliance: 45 CFR 170.315 (b)(6) - Data Export
+    API endpoint to generate and download C-CDA CCD document
+    """
+    try:
+        data = request.get_json()
+        
+        if not data:
+            app.logger.error("No JSON data received in CCD export request")
+            return jsonify({'error': 'No data provided in request.'}), 400
+        
+        # Log received data for debugging
+        app.logger.info(f"CCD export request received")
+        app.logger.info(f"Request data keys: {list(data.keys())}")
+        
+        # Get patient data from session
+        patient_id = session.get('patient_id', 'N/A')
+        app.logger.info(f"Patient ID from session: {patient_id}")
+        
+        # Get or retrieve risk assessment data
+        risk_data = data.get('risk_data')
+        if not risk_data:
+            app.logger.error("Risk assessment data missing in CCD export request")
+            app.logger.error(f"Available keys in request: {list(data.keys())}")
+            return jsonify({'error': 'Risk assessment data is required. Please calculate risk first.'}), 400
+        
+        app.logger.info(f"Risk data received: {risk_data}")
+        
+        # Validate required risk data fields
+        required_fields = ['total_score', 'risk_category']
+        missing_fields = [field for field in required_fields if field not in risk_data]
+        if missing_fields:
+            app.logger.error(f"Missing required fields in risk_data: {missing_fields}")
+            app.logger.error(f"Available fields in risk_data: {list(risk_data.keys())}")
+            return jsonify({
+                'error': f'Missing required risk data fields: {", ".join(missing_fields)}',
+                'details': 'Please ensure all risk calculations are complete before exporting.',
+                'received_fields': list(risk_data.keys()),
+                'missing_fields': missing_fields
+            }), 400
+        
+        # Prepare patient demographics
+        patient_data = {
+            'id': patient_id,
+            'name': data.get('patient_name', 'Unknown Patient'),
+            'gender': data.get('patient_gender', 'Unknown'),
+            'birth_date': data.get('patient_birth_date', '1970-01-01'),
+            'age': data.get('patient_age', 'Unknown')
+        }
+        
+        app.logger.info(f"Generating CCD with patient_data: {patient_data}")
+        app.logger.info(f"Risk data for CCD: egfr={risk_data.get('egfr')}, hemoglobin={risk_data.get('hemoglobin')}, wbc={risk_data.get('wbc')}")
+        
+        # Generate CCD document
+        try:
+            ccd_xml = generate_ccd_from_session_data(
+                patient_data=patient_data,
+                risk_data=risk_data,
+                raw_fhir_data={}  # Optional: could pass full FHIR data if needed
+            )
+        except Exception as ccd_error:
+            app.logger.error(f"Error generating CCD document: {str(ccd_error)}")
+            app.logger.error(f"Error type: {type(ccd_error).__name__}")
+            import traceback
+            app.logger.error(f"Traceback: {traceback.format_exc()}")
+            return jsonify({
+                'error': 'Failed to generate CCD document',
+                'details': str(ccd_error),
+                'error_type': type(ccd_error).__name__
+            }), 500
+        
+        # Log successful export
+        app.logger.info(f"CCD document generated for patient: {patient_id}")
+        
+        # Return the CCD as downloadable XML
+        return Response(
+            ccd_xml,
+            mimetype='application/xml',
+            headers={
+                'Content-Disposition': f'attachment; filename=PRECISE_HBR_CCD_{patient_id}_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.xml',
+                'Content-Type': 'application/xml; charset=utf-8'
+            }
+        )
+        
+    except Exception as e:
+        app.logger.error(f"Error generating CCD: {str(e)}", exc_info=True)
+        return jsonify({'error': 'Failed to generate CCD document.', 'details': str(e)}), 500
+
 @app.route('/api/exchange-code', methods=['POST'])
 def exchange_code():
     """API to exchange authorization code for an access token."""
     try:
         data = request.get_json()
+        app.logger.info(f"Exchange code request data: {data}")
         code = data.get('code')
         if not code:
+            app.logger.error("Authorization code is missing from request")
             return jsonify({"error": "Authorization code is missing."}), 400
         launch_params = session.get('launch_params')
+        app.logger.info(f"Launch params from session: {launch_params}")
         if not launch_params:
+            app.logger.error("Launch context not found in session")
             return jsonify({"error": "Launch context not found in session."}), 400
         token_url = launch_params['token_url']
         code_verifier = launch_params['code_verifier']
@@ -184,12 +348,48 @@ def exchange_code():
         }
         if 'patient' in token_response:
             session['patient_id'] = token_response['patient']
+        
+        # ONC Compliance: Audit successful authentication
+        log_user_authentication(
+            user_id=session.get('session_id', 'unknown'),
+            outcome='success',
+            details={
+                'patient_id': token_response.get('patient'),
+                'scope': token_response.get('scope'),
+                'authentication_method': 'SMART_on_FHIR_OAuth2'
+            }
+        )
+        
         return jsonify({"status": "ok", "redirect_url": url_for('main_page')})
     except requests.exceptions.HTTPError as e:
         app.logger.error(f"Token exchange failed: {e.response.status_code} {e.response.text}")
+        
+        # ONC Compliance: Audit failed authentication
+        log_user_authentication(
+            user_id=session.get('session_id', 'unknown'),
+            outcome='failure',
+            details={
+                'error': 'token_exchange_failed',
+                'status_code': e.response.status_code,
+                'authentication_method': 'SMART_on_FHIR_OAuth2'
+            }
+        )
+        
         return jsonify({"error": "Failed to exchange code for token.", "details": e.response.text}), e.response.status_code
     except Exception as e:
         app.logger.error(f"Unexpected error during token exchange: {e}", exc_info=True)
+        
+        # ONC Compliance: Audit failed authentication
+        log_user_authentication(
+            user_id=session.get('session_id', 'unknown'),
+            outcome='failure',
+            details={
+                'error': 'unexpected_error',
+                'error_message': str(e),
+                'authentication_method': 'SMART_on_FHIR_OAuth2'
+            }
+        )
+        
         return jsonify({"error": "An internal server error occurred."}), 500
 
 # --- Frontend Routes ---
@@ -227,28 +427,7 @@ def launch():
         auth_url = None
         token_url = None
 
-        # Cerner's sandbox environments (like fhir-ehr-code.cerner.com) may not
-        # support .well-known/smart-configuration. We will manually provide the
-        # endpoints if the iss domain is from Cerner, based on their /metadata response.
-        # if CERNER_DOMAIN in iss:
-        #     app.logger.info(f"Cerner domain detected in ISS '{iss}'. Using hardcoded configuration based on metadata.")
-            
-        #     # Extract tenant_id and hostname from the ISS URL
-        #     tenant_match = re.search(r'/r4/([a-f0-9\-]+)', iss)
-        #     parsed_iss = urlparse(iss)
-        #     iss_hostname = parsed_iss.hostname
-
-        #     if not tenant_match or not iss_hostname:
-        #         return render_error_page("Configuration Error", "Could not extract tenant ID or hostname from Cerner ISS URL.")
-            
-        #     tenant_id = tenant_match.group(1)
-        #     app.logger.info(f"Extracted Cerner tenant ID: {tenant_id}, Hostname: {iss_hostname}")
-            
-        #     # Construct the v1 URLs as specified in the metadata for fhir-ehr-code.cerner.com
-        #     auth_url = f'https://authorization.cerner.com/tenants/{tenant_id}/protocols/oauth2/profiles/smart-v1/personas/provider/authorize'
-        #     token_url = f'https://authorization.cerner.com/tenants/{tenant_id}/hosts/{iss_hostname}/protocols/oauth2/profiles/smart-v1/token'
-        # else:
-        # For other EHRs, use the discovery mechanism.
+        # Standard discovery mechanism.
         smart_config_url = f"{iss.rstrip('/')}/.well-known/smart-configuration"
         try:
             config_response = requests.get(smart_config_url, headers={'Accept': 'application/json'}, timeout=10)
@@ -258,7 +437,6 @@ def launch():
             token_url = smart_config.get('token_endpoint')
         except (requests.exceptions.RequestException, ValueError) as e:
             app.logger.warning(f"Failed to fetch .well-known/smart-configuration: {e}. Falling back.")
-            # Fallback for systems that might not have .well-known but fhirclient can discover.
             try:
                 fhir_client = client.FHIRClient(settings={'app_id': 'my_app', 'api_base': iss})
                 auth_url = fhir_client.server.auth_settings.get('authorize_uri')
@@ -272,6 +450,7 @@ def launch():
         code_verifier = base64.urlsafe_b64encode(os.urandom(32)).rstrip(b'=').decode('utf-8')
         code_challenge = base64.urlsafe_b64encode(hashlib.sha256(code_verifier.encode('utf-8')).digest()).rstrip(b'=').decode('utf-8')
         session['launch_params'] = {'iss': iss, 'token_url': token_url, 'code_verifier': code_verifier}
+        
         auth_params = {
             'response_type': 'code',
             'client_id': CLIENT_ID,
@@ -295,14 +474,123 @@ def callback():
 
 @app.route('/main')
 @login_required
+@audit_ephi_access(action='view_risk_calculator', resource_type='Patient')
 def main_page():
     patient_id = session.get('patient_id', 'N/A')
     return render_template('main.html', patient_id=patient_id)
 
-@app.route('/logout')
+@app.route('/report-issue')
+def report_issue_page():
+    """
+    ONC Compliance: 45 CFR 170.523 (n) - Complaint Process
+    Display the complaint/issue reporting form
+    """
+    return render_template('report_issue.html')
+
+@app.route('/submit-complaint', methods=['POST'])
+def submit_complaint():
+    """
+    ONC Compliance: 45 CFR 170.523 (n) - Complaint Process
+    Handle complaint submission and storage
+    """
+    import datetime
+    import json
+    import uuid
+    
+    # Generate unique reference ID
+    reference_id = f"COMP-{datetime.datetime.now().strftime('%Y%m%d')}-{str(uuid.uuid4())[:8].upper()}"
+    
+    # Collect complaint data
+    complaint_data = {
+        'reference_id': reference_id,
+        'timestamp': datetime.datetime.now().isoformat(),
+        'complainant_type': request.form.get('complainant_type', 'unknown'),
+        'category': request.form.get('category', 'other'),
+        'severity': request.form.get('severity', 'medium'),
+        'subject': request.form.get('subject', '').strip(),
+        'description': request.form.get('description', '').strip(),
+        'contact_email': request.form.get('contact_email', '').strip(),
+        'user_agent': request.headers.get('User-Agent', 'unknown'),
+        'ip_address': request.remote_addr,
+        'session_patient_id': session.get('patient_id', 'N/A')  # Non-PHI context only
+    }
+    
+    # Validate required fields
+    if not all([complaint_data['complainant_type'], complaint_data['category'], 
+                complaint_data['severity'], complaint_data['subject'], 
+                complaint_data['description']]):
+        return render_template('report_issue.html', 
+                             error="Please fill in all required fields."), 400
+    
+    # Save complaint to file (JSON Lines format for easy parsing)
+    complaints_dir = os.path.join(os.getcwd(), 'instance', 'complaints')
+    os.makedirs(complaints_dir, exist_ok=True)
+    
+    complaints_file = os.path.join(complaints_dir, 'complaints.jsonl')
+    
+    try:
+        with open(complaints_file, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(complaint_data, ensure_ascii=False) + '\n')
+        
+        app.logger.info(f"Complaint submitted: {reference_id} - Category: {complaint_data['category']} - Severity: {complaint_data['severity']}")
+        
+        # Send email notification for critical complaints (if email configured)
+        if complaint_data['severity'] == 'critical':
+            app.logger.warning(f"CRITICAL COMPLAINT RECEIVED: {reference_id} - {complaint_data['subject']}")
+            # TODO: Add email notification here in production
+        
+        return render_template('report_issue.html', 
+                             success=True, 
+                             reference_id=reference_id)
+    
+    except Exception as e:
+        app.logger.error(f"Error saving complaint: {e}")
+        return render_template('report_issue.html', 
+                             error="An error occurred while submitting your complaint. Please try again."), 500
+
+@app.route('/logout', methods=['GET', 'POST'])
 def logout():
+    """
+    ONC Compliance: 45 CFR 170.315 (d)(5) - Automatic Access Time-out
+    This endpoint is called when a user's session expires due to inactivity
+    or when they manually log out.
+    """
+    # ONC Compliance: Audit logout event
+    audit_logger = get_audit_logger()
+    user_id = session.get('session_id', 'unknown')
+    patient_id = session.get('patient_id')
+    logout_reason = 'manual' if request.method == 'GET' else 'timeout_or_manual'
+    
+    audit_logger.log_event(
+        event_type='AUTHENTICATION',
+        action='user_logout',
+        user_id=user_id,
+        patient_id=patient_id,
+        outcome='success',
+        details={'logout_reason': logout_reason},
+        ip_address=request.remote_addr,
+        user_agent=request.headers.get('User-Agent')
+    )
+    
     session.clear()
+    
+    # If it's a POST request (from JavaScript), return JSON
+    if request.method == 'POST':
+        return jsonify({'status': 'logged_out', 'message': 'Session cleared successfully'}), 200
+    
+    # If it's a GET request (direct navigation), redirect to index
     return redirect(url_for('index'))
+
+@app.after_request
+def add_security_headers(response: Response):
+    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    return response
+
+@app.after_request
+def add_cache_control_headers(response):
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    return response
 
 # --- Main Execution ---
 
@@ -313,15 +601,22 @@ csp = {
     'script-src': [
         '\'self\'',
         'cdn.jsdelivr.net',
-        'cdnjs.cloudflare.com'  # Allow scripts from Cloudflare CDN
+        'cdnjs.cloudflare.com',  # Allow scripts from Cloudflare CDN
+        '\'unsafe-inline\''       # Allow inline scripts for compatibility
     ],
     'style-src': [
         '\'self\'',
         'cdn.jsdelivr.net',
-        'cdnjs.cloudflare.com'
+        'cdnjs.cloudflare.com',
+        '\'unsafe-inline\''       # Allow inline styles for compatibility
     ],
     'font-src': 'cdnjs.cloudflare.com',
-    'img-src': ['\'self\'', 'data:']  # Allow images from self and data URIs
+    'img-src': ['\'self\'', 'data:'],  # Allow images from self and data URIs
+    'connect-src': [
+        '\'self\'',
+        'cdn.jsdelivr.net',  # Allow source map connections for debugging
+        'cdnjs.cloudflare.com'
+    ]
 }
 Talisman(app, content_security_policy=csp)
 
@@ -329,10 +624,70 @@ Talisman(app, content_security_policy=csp)
 csrf = CSRFProtect()
 csrf.init_app(app)
 
-app.register_blueprint(tradeoff_bp)
+# Exempt specific routes from CSRF protection
+csrf.exempt(launch)
+csrf.exempt(callback)
+csrf.exempt(exchange_code)
+csrf.exempt(calculate_risk_api)
+csrf.exempt(export_ccd_api)  # Exempt CCD export API
+csrf.exempt(tradeoff_bp) # Exempt the entire blueprint
+csrf.exempt(hooks_bp) # Exempt CDS Hooks blueprint (external services)
+
+# Enable CORS for CDS Hooks endpoints (required for external CDS Hooks clients)
+# This allows CDS Hooks Sandbox and EHR systems to call our hooks
+CORS(app, resources={
+    r"/cds-services/*": {
+        "origins": "*",  # Allow all origins for CDS Hooks discovery and invocation
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"],
+        "supports_credentials": False
+    }
+})
+
+# Register blueprints
+app.register_blueprint(tradeoff_bp)  # Tradeoff analysis
+app.register_blueprint(hooks_bp)  # CDS Hooks
 
 if __name__ == '__main__':
-    # Debug mode should be controlled by an environment variable
-    debug_mode = os.environ.get('FLASK_DEBUG', 'false').lower() in ['true', '1', 't']
-    host = os.environ.get("HOST", "127.0.0.1")
-    app.run(host=host, port=8080, debug=debug_mode)
+    # R-08 Risk Mitigation: Enhanced production environment checks
+    is_production = (
+        os.environ.get('FLASK_ENV') == 'production' or 
+        os.environ.get('PRODUCTION') == 'true' or
+        os.environ.get('GAE_ENV') == 'standard'  # Google App Engine
+    )
+    
+    # Strict production security checks
+    if is_production:
+        # Ensure debug mode is disabled in production
+        if os.environ.get('FLASK_DEBUG', 'false').lower() in ['true', '1', 't']:
+            app.logger.error("SECURITY VIOLATION: Debug mode attempted in production environment!")
+            app.logger.error("This is a security risk that could expose sensitive information.")
+            raise ValueError("Debug mode is not allowed in production environments.")
+        
+        # Ensure HTTPS in production
+        if not app.config.get('SESSION_COOKIE_SECURE'):
+            app.logger.warning("SESSION_COOKIE_SECURE should be True in production with HTTPS")
+        
+        # Log production startup
+        app.logger.info("Starting application in PRODUCTION mode with enhanced security")
+        debug_mode = False
+    else:
+        # Development mode
+        debug_mode = os.environ.get('FLASK_DEBUG', 'false').lower() in ['true', '1', 't']
+        if debug_mode:
+            app.logger.warning("Running in DEBUG mode - only use in development!")
+        
+        app.logger.info("Starting application in DEVELOPMENT mode")
+    
+    # Security: Only bind to all interfaces if explicitly set in production
+    # For local development, bind to localhost for better security
+    if is_production:
+        host = os.environ.get("HOST", "0.0.0.0")  # nosec B104 - Required for cloud deployment
+    else:
+        host = os.environ.get("HOST", "127.0.0.1")  # Localhost only for development
+    
+    # Use port 8080 for cloud deployments, but allow override
+    port = int(os.environ.get("PORT", 8080))
+    
+    app.logger.info(f"Server starting on {host}:{port} (debug={debug_mode}, production={is_production})")
+    app.run(host=host, port=port, debug=debug_mode)

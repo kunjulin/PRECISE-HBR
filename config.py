@@ -7,11 +7,19 @@ load_dotenv()
 
 class Config:
     """Base configuration."""
-    SECRET_KEY = os.environ.get('FLASK_SECRET_KEY') or 'a_default_secret_key'
+    SECRET_KEY = os.environ.get('FLASK_SECRET_KEY')
     SESSION_TYPE = 'filesystem'
     SESSION_PERMANENT = False
-    # Use a project-local directory for session files
-    SESSION_FILE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance', 'flask_session')
+    
+    # Determine session directory based on environment
+    # App Engine has read-only filesystem except for /tmp
+    if os.environ.get('GAE_ENV', '').startswith('standard'):
+        # Running on Google App Engine - use secure temp directory
+        import tempfile
+        SESSION_FILE_DIR = os.path.join(tempfile.gettempdir(), 'flask_session')
+    else:
+        # Running locally or on other platforms
+        SESSION_FILE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance', 'flask_session')
 
     # SMART on FHIR configuration
     CLIENT_ID = os.environ.get('SMART_CLIENT_ID')
@@ -29,6 +37,9 @@ class Config:
     @staticmethod
     def init_app(app):
         # Pre-flight checks for essential configuration
+        if not Config.SECRET_KEY:
+            raise ValueError("FATAL: FLASK_SECRET_KEY must be set in the environment.")
+        
         if not Config.CLIENT_ID or not Config.REDIRECT_URI:
             raise ValueError(
                 "FATAL: SMART_CLIENT_ID and SMART_REDIRECT_URI must be set in the environment.")
@@ -37,10 +48,18 @@ class Config:
         if Config.REDIRECT_URI and '#' in Config.REDIRECT_URI:
             Config.REDIRECT_URI = Config.REDIRECT_URI.split('#')[0].strip()
 
-        # Ensure session directory exists
+        # R-02 Risk Mitigation: Ensure session directory exists with secure permissions
         if not os.path.exists(Config.SESSION_FILE_DIR):
             try:
-                os.makedirs(Config.SESSION_FILE_DIR)
+                os.makedirs(Config.SESSION_FILE_DIR, mode=0o700)  # Owner read/write/execute only
+                app.logger.info(f"Created secure session directory: {Config.SESSION_FILE_DIR}")
             except OSError as e:
                 app.logger.warning(
                     f"Could not create session directory: {e}. Using default session handling.")
+        else:
+            # Ensure existing directory has secure permissions
+            try:
+                os.chmod(Config.SESSION_FILE_DIR, 0o700)
+                app.logger.debug(f"Set secure permissions on session directory: {Config.SESSION_FILE_DIR}")
+            except OSError as e:
+                app.logger.warning(f"Could not set secure permissions on session directory: {e}")

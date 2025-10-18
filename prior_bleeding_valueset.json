@@ -19,32 +19,107 @@
       ]
     }
   ],
-  "description": "A ValueSet that includes SNOMED CT codes indicating a history of significant bleeding events.",
+  "description": "A ValueSet that includes SNOMED CT codes for prior bleeding events (既往出血史). Includes major bleeding categories and their subconcepts.",
   "copyright": "This ValueSet includes content from SNOMED CT, which is copyright © 2002+ International Health Terminology Standards Development Organisation (IHTSDO), and distributed by agreement between IHTSDO and HL7. Implementer use of SNOMED CT is not covered by this agreement.",
   "compose": {
     "include": [
       {
         "system": "http://snomed.info/sct",
-        "concept": [
+        "filter": [
           {
-            "code": "162050001",
-            "display": "History of gastrointestinal hemorrhage (situation)"
-          },
+            "property": "concept",
+            "op": "is-a",
+            "value": "74474003"
+          }
+        ]
+      },
+      {
+        "system": "http://snomed.info/sct",
+        "filter": [
           {
-            "code": "428860009",
-            "display": "History of intracranial hemorrhage (situation)"
-          },
+            "property": "concept",
+            "op": "is-a",
+            "value": "50960005"
+          }
+        ]
+      },
+      {
+        "system": "http://snomed.info/sct",
+        "filter": [
           {
-            "code": "429044007",
-            "display": "History of subarachnoid hemorrhage (situation)"
-          },
+            "property": "concept",
+            "op": "is-a",
+            "value": "1386000"
+          }
+        ]
+      },
+      {
+        "system": "http://snomed.info/sct",
+        "filter": [
           {
-            "code": "443760008",
-            "display": "History of bleeding esophageal varices (situation)"
-          },
+            "property": "concept",
+            "op": "is-a",
+            "value": "236002003"
+          }
+        ]
+      },
+      {
+        "system": "http://snomed.info/sct",
+        "filter": [
           {
-            "code": "275190004",
-            "display": "History of hemoptysis (situation)"
+            "property": "concept",
+            "op": "is-a",
+            "value": "443826006"
+          }
+        ]
+      },
+      {
+        "system": "http://snomed.info/sct",
+        "filter": [
+          {
+            "property": "concept",
+            "op": "is-a",
+            "value": "233703007"
+          }
+        ]
+      },
+      {
+        "system": "http://snomed.info/sct",
+        "filter": [
+          {
+            "property": "concept",
+            "op": "is-a",
+            "value": "59282003"
+          }
+        ]
+      },
+      {
+        "system": "http://snomed.info/sct",
+        "filter": [
+          {
+            "property": "concept",
+            "op": "is-a",
+            "value": "3298000"
+          }
+        ]
+      },
+      {
+        "system": "http://snomed.info/sct",
+        "filter": [
+          {
+            "property": "concept",
+            "op": "is-a",
+            "value": "9957009"
+          }
+        ]
+      },
+      {
+        "system": "http://snomed.info/sct",
+        "filter": [
+          {
+            "property": "concept",
+            "op": "is-a",
+            "value": "17338001"
           }
         ]
       }

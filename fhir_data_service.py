@@ -52,24 +52,35 @@ TARGET_UNITS = {
         'unit': '10*9/l',
         # Factors to convert a source unit TO the target unit (10^9/L)
         'factors': {
-            '10*3/ul': 0.001, # 10^3/µL is equivalent to 10^9/L, but sometimes written this way. Let's assume K/uL = 10^3/uL
-            'k/ul': 0.001,
-            '/ul': 0.000001, # cells/µL is 10^-6 of 10^9/L
-            '/mm3': 0.000001 # cells/mm³ is equivalent to cells/µL
+            '10*3/ul': 1.0,     # 10^3/µL = K/µL = 10^9/L (same unit, different notation)
+            'k/ul': 1.0,        # K/µL = thousands/µL = 10^9/L
+            '/ul': 0.001,       # cells/µL ÷ 1000 = 10^9/L (1000 cells/µL = 1 ×10^9/L)
+            '/mm3': 0.001,      # cells/mm³ = cells/µL, same conversion
+            '10^9/l': 1.0,      # Already in target unit
+            'giga/l': 1.0       # Giga/L = 10^9/L
         }
     },
     'EGFR': {
         'unit': 'ml/min/1.73m2',
         'factors': {
-            'ml/min/{1.73_m2}': 1.0, # Handle Cerner's format with braces
-            'ml/min/1.73m^2': 1.0   # Handle another common variant
+            'ml/min/1.73m2': 1.0,       # Standard format
+            'ml/min/{1.73_m2}': 1.0,    # Cerner format with braces
+            'ml/min/1.73m^2': 1.0,      # With caret
+            'ml/min/1.73 m2': 1.0,      # With space
+            'ml/min/1.73 m^2': 1.0,     # Space and caret
+            'ml/min per 1.73m2': 1.0,   # With 'per'
+            'ml/min/bsa': 1.0,          # Body surface area
+            'ml/min': 1.0               # Without BSA normalization (accept as-is)
         } 
     },
     'PLATELETS': {
         'unit': '10*9/l',
         'factors': {
-            '10*3/ul': 0.001,
-            'k/ul': 0.001,
+            '10*3/ul': 1.0,     # 10^3/µL = K/µL = 10^9/L (same unit)
+            'k/ul': 1.0,        # K/µL = thousands/µL = 10^9/L
+            '/ul': 0.001,       # cells/µL ÷ 1000 = 10^9/L
+            '10^9/l': 1.0,      # Already in target unit
+            'giga/l': 1.0       # Giga/L = 10^9/L
         }
     }
 }
@@ -156,7 +167,8 @@ def get_fhir_data(fhir_server_url, access_token, patient_id, client_id):
             
         except Exception as e:
             error_msg = str(e)
-            logging.error(f"Detailed error fetching patient: {error_msg}")
+            # Sanitize logging to prevent ePHI leakage
+            logging.error(f"Error fetching patient resource for patient_id: {patient_id}. Status code or error type: {type(e).__name__}")
             
             # Log additional debugging information
             if hasattr(smart.server, 'session') and hasattr(smart.server.session, 'headers'):
@@ -187,7 +199,8 @@ def get_fhir_data(fhir_server_url, access_token, patient_id, client_id):
                 return None, f"Patient {patient_id} not found in the FHIR server."
             else:
                 logging.error(f"Failed to fetch patient resource")
-                return None, f"Failed to retrieve patient data: {str(e)}"
+                # Sanitize the returned error message as well
+                return None, f"Failed to retrieve patient data. Error type: {type(e).__name__}"
 
         raw_data = {"patient": patient_resource.as_json()}
         
@@ -224,7 +237,8 @@ def get_fhir_data(fhir_server_url, access_token, patient_id, client_id):
                 logging.info(f"Successfully fetched {len(obs_list)} {resource_type} observation(s)")
                 
             except Exception as e:
-                logging.warning(f"Error fetching {resource_type} observations (continuing with empty list): {e}")
+                # Sanitize logging
+                logging.warning(f"Error fetching {resource_type} for patient {patient_id}. Type: {type(e).__name__}. Continuing with empty list.")
                 raw_data[resource_type] = []
         
         # Fetch conditions (for bleeding history)
@@ -251,16 +265,17 @@ def get_fhir_data(fhir_server_url, access_token, patient_id, client_id):
         except Exception as e:
             error_str = str(e)
             if '504' in error_str or 'timeout' in error_str.lower() or 'gateway time-out' in error_str.lower():
-                logging.error(f"Timeout error even with extended timeout (90s): {e}")
+                # Sanitize logging
+                logging.error(f"Timeout error fetching conditions for patient {patient_id}. Error type: {type(e).__name__}")
                 logging.info("This suggests the FHIR server is very slow or overloaded")
             elif '401' in error_str or '403' in error_str:
-                logging.error(f"Permission error for conditions: {e}")
+                logging.error(f"Permission error fetching conditions for patient {patient_id}. Error type: {type(e).__name__}")
             else:
-                logging.error(f"Unexpected error fetching conditions: {e}")
+                logging.error(f"Unexpected error fetching conditions for patient {patient_id}. Error type: {type(e).__name__}")
             
             # Continue with empty conditions list
             raw_data['conditions'] = []
-            logging.warning(f"Continuing with empty conditions list due to error: {e}")
+            logging.warning(f"Continuing with empty conditions list for patient {patient_id} due to a server error.")
         
         # For PRECISE-DAPT, we don't need medications and procedures, but keep minimal fetch for compatibility
         raw_data['med_requests'] = []
@@ -269,8 +284,9 @@ def get_fhir_data(fhir_server_url, access_token, patient_id, client_id):
         return raw_data, None
 
     except Exception as e:
-        logging.error(f"An unexpected error occurred in get_fhir_data: {e}", exc_info=True)
-        return None, str(e)
+        # Sanitize logging for the top-level exception
+        logging.error(f"An unexpected error occurred in get_fhir_data. Error type: {type(e).__name__}", exc_info=False)
+        return None, "An unexpected error occurred while fetching FHIR data."
 
 def get_tradeoff_model_data(fhir_server_url, access_token, client_id, patient_id):
     """
@@ -314,6 +330,8 @@ def get_tradeoff_model_data(fhir_server_url, access_token, client_id, patient_id
     # Use a broader condition search to find relevant diagnoses
     try:
         search_params = {'patient': patient_id, '_count': '200'}
+        # Note: fhirclient's perform() doesn't accept timeout parameter
+        # Timeout is configured via the HTTPAdapter on the session
         conditions = condition.Condition.where(search_params).perform(fhir_client.server)
         
         if conditions.entry:
@@ -339,6 +357,8 @@ def get_tradeoff_model_data(fhir_server_url, access_token, client_id, patient_id
     # Check for smoking status from Observations
     try:
         search_params = {'patient': patient_id, 'code': '72166-2'}  # Smoking status LOINC
+        # Note: fhirclient's perform() doesn't accept timeout parameter
+        # Timeout is configured via the HTTPAdapter on the session
         obs_search = observation.Observation.where(search_params).perform(fhir_client.server)
         if obs_search and obs_search.entry:
             # Safe sorting by date
@@ -366,6 +386,8 @@ def get_tradeoff_model_data(fhir_server_url, access_token, client_id, patient_id
     # Check for complex PCI and BMS from Procedures
     try:
         search_params = {'patient': patient_id, '_count': '50'}
+        # Note: fhirclient's perform() doesn't accept timeout parameter
+        # Timeout is configured via the HTTPAdapter on the session
         procedures = procedure.Procedure.where(search_params).perform(fhir_client.server)
         if procedures.entry:
             for entry in procedures.entry:
@@ -382,6 +404,8 @@ def get_tradeoff_model_data(fhir_server_url, access_token, client_id, patient_id
     # Check for OAC at discharge from MedicationRequest
     try:
         search_params = {'patient': patient_id, 'category': 'outpatient'}
+        # Note: fhirclient's perform() doesn't accept timeout parameter
+        # Timeout is configured via the HTTPAdapter on the session
         med_requests = medicationrequest.MedicationRequest.where(search_params).perform(fhir_client.server)
         if med_requests.entry:
             for entry in med_requests.entry:
@@ -494,50 +518,88 @@ def detect_tradeoff_factors(raw_data, demographics, tradeoff_data):
 def convert_hr_to_probability(total_hr_score, baseline_event_rate):
     """
     Converts a total Hazard Ratio (HR) score to an estimated 1-year event probability.
-    This is a simplified model for visualization purposes.
-    Formula: P(event) = 1 - (1 - baseline_rate) ^ exp(total_hr - baseline_hr_sum)
-    For simplicity, we use: P(event) = baseline_rate * total_hr_score
+    
+    Uses the Cox proportional hazards model:
+    P(event) = 1 - exp(-baseline_hazard × HR)
+    
+    Where baseline_hazard is derived from the baseline event rate:
+    baseline_hazard ≈ -ln(1 - baseline_rate)
+    
+    This ensures that:
+    1. When HR = 1, P(event) = baseline_rate
+    2. When HR increases, P(event) increases non-linearly (more realistic)
+    3. P(event) never exceeds 100%
+    
+    This is more accurate than simple linear scaling, especially when HR > 2.
     """
-    # This is a major simplification. A proper conversion would require
-    # the baseline hazard and the sum of HRs for the baseline group.
-    # For visualization, a linear scaling can be sufficient.
+    import math
     
-    # Let's assume the sum of HRs in the model approximately represents the relative risk.
-    # If baseline rate is, for example, 5% for bleeding, a total HR of 2.0 would imply ~10% risk.
+    # Convert baseline event rate (percentage) to baseline hazard
+    # Formula: baseline_hazard = -ln(1 - baseline_rate/100)
+    baseline_rate_decimal = baseline_event_rate / 100.0  # Convert % to decimal
     
-    estimated_probability = baseline_event_rate * total_hr_score
-    return round(min(estimated_probability, 100.0), 2) # Cap at 100%
+    # Handle edge case: if baseline_rate is 100%, hazard would be infinite
+    if baseline_rate_decimal >= 1.0:
+        return 100.0
+    
+    # Calculate baseline hazard (cumulative hazard over 1 year)
+    baseline_hazard = -math.log(1 - baseline_rate_decimal)
+    
+    # Apply the HR to get adjusted hazard
+    adjusted_hazard = baseline_hazard * total_hr_score
+    
+    # Convert back to probability using survival function
+    # P(event) = 1 - S(t) = 1 - exp(-H(t))
+    # where H(t) is the cumulative hazard
+    survival_probability = math.exp(-adjusted_hazard)
+    event_probability = 1 - survival_probability
+    
+    # Convert to percentage and round
+    event_probability_percent = event_probability * 100.0
+    
+    return round(min(event_probability_percent, 100.0), 2)  # Cap at 100%
 
 def calculate_tradeoff_scores_interactive(model_predictors, active_factors):
     """
     Calculates bleeding and thrombotic scores and converts them to probabilities.
     'active_factors' is a dictionary like {'smoker': true, 'diabetes': false}.
+    
+    CORRECTED: Uses multiplicative model for Hazard Ratios (Cox proportional hazards model).
+    Total HR = HR₁ × HR₂ × HR₃ × ... (or sum of log HRs)
     """
-    # Baseline 1-year event rates (hypothetical, based on typical HBR cohort studies)
-    BASELINE_BLEEDING_RATE = 2.5  # %
-    BASELINE_THROMBOTIC_RATE = 3.0 # %
+    import math
+    
+    # Baseline 1-year event rates for reference group (patients with NO risk factors)
+    # Based on Galli M, et al. JAMA Cardiology 2021 - ARC-HBR Trade-off Model
+    # Represents lowest risk quintile in the ARC-HBR cohort
+    # Overall HBR cohort rates: 7.5% bleeding, 7.0% thrombotic
+    BASELINE_BLEEDING_RATE = 2.5  # % (BARC 3-5 bleeding, 1-year risk, reference group)
+    BASELINE_THROMBOTIC_RATE = 2.5 # % (MI/ST, 1-year risk, reference group)
 
-    bleeding_score_hr = 0
-    thrombotic_score_hr = 0
+    # Use multiplicative model: start with HR = 1 (no risk factor)
+    bleeding_score_hr = 1.0
+    thrombotic_score_hr = 1.0
     
     bleeding_factors_details = []
     thrombotic_factors_details = []
 
-    # Calculate bleeding score in HR
+    # Calculate bleeding score in HR (CORRECTED: multiply HRs)
     for predictor in model_predictors['bleedingEvents']['predictors']:
         factor_key = predictor['factor']
         if active_factors.get(factor_key, False):
-            bleeding_score_hr += predictor['hazardRatio']
+            bleeding_score_hr *= predictor['hazardRatio']  # ✅ MULTIPLY, not add
             bleeding_factors_details.append(f"{predictor['description']} (HR: {predictor['hazardRatio']})")
     
-    # Calculate thrombotic score in HR
+    # Calculate thrombotic score in HR (CORRECTED: multiply HRs)
     for predictor in model_predictors['thromboticEvents']['predictors']:
         factor_key = predictor['factor']
         if active_factors.get(factor_key, False):
-            thrombotic_score_hr += predictor['hazardRatio']
+            thrombotic_score_hr *= predictor['hazardRatio']  # ✅ MULTIPLY, not add
             thrombotic_factors_details.append(f"{predictor['description']} (HR: {predictor['hazardRatio']})")
 
     # Convert HR scores to probabilities
+    # Use more accurate formula: Risk = 1 - exp(-baseline_hazard × HR × time)
+    # For simplicity, approximate: Risk ≈ baseline_rate × HR (valid when risk is low)
     bleeding_prob = convert_hr_to_probability(bleeding_score_hr, BASELINE_BLEEDING_RATE)
     thrombotic_prob = convert_hr_to_probability(thrombotic_score_hr, BASELINE_THROMBOTIC_RATE)
 
@@ -648,20 +710,21 @@ def calculate_tradeoff_scores(raw_data, demographics, tradeoff_data):
             "thrombotic_factors": []
         }
 
-    bleeding_score = 0
-    thrombotic_score = 0
+    # CORRECTED: Use multiplicative model for Cox proportional hazards
+    bleeding_score = 1.0  # Start with HR = 1 (no risk factors)
+    thrombotic_score = 1.0  # Start with HR = 1 (no risk factors)
     
     bleeding_factors = []
     thrombotic_factors = []
 
-    # Helper to add score and factor
+    # Helper to multiply score and record factor (CORRECTED)
     def add_score(event_type, factor, ratio):
         nonlocal bleeding_score, thrombotic_score
         if event_type == 'bleeding':
-            bleeding_score += ratio
+            bleeding_score *= ratio  # ✅ MULTIPLY, not add
             bleeding_factors.append(f"{factor} (HR: {ratio})")
         else:
-            thrombotic_score += ratio
+            thrombotic_score *= ratio  # ✅ MULTIPLY, not add
             thrombotic_factors.append(f"{factor} (HR: {ratio})")
 
     # Demographics
@@ -714,9 +777,17 @@ def calculate_tradeoff_scores(raw_data, demographics, tradeoff_data):
     # if check_liver_cancer_surgery(raw_data.get('conditions', [])):
     #     add_score('bleeding', 'Liver/Cancer/Surgery', 1.63)
 
+    # Convert HR scores to probabilities using updated baseline rates
+    # Based on Galli M, et al. JAMA Cardiology 2021
+    BASELINE_BLEEDING_RATE = 2.5  # % (BARC 3-5 bleeding, 1-year risk, reference group)
+    BASELINE_THROMBOTIC_RATE = 2.5  # % (MI/ST, 1-year risk, reference group)
+    
+    bleeding_prob = convert_hr_to_probability(bleeding_score, BASELINE_BLEEDING_RATE)
+    thrombotic_prob = convert_hr_to_probability(thrombotic_score, BASELINE_THROMBOTIC_RATE)
+
     return {
-        "bleeding_score": round(bleeding_score, 2),
-        "thrombotic_score": round(thrombotic_score, 2),
+        "bleeding_score": bleeding_prob,  # Now returns probability (%), not HR
+        "thrombotic_score": thrombotic_prob,  # Now returns probability (%), not HR
         "bleeding_factors": bleeding_factors,
         "thrombotic_factors": thrombotic_factors
     }
@@ -1170,6 +1241,10 @@ def calculate_precise_hbr_score(raw_data, demographics):
     egfr_list = raw_data.get('EGFR', [])
     creatinine_list = raw_data.get('CREATININE', [])
     
+    logging.info(f"DEBUG: eGFR list length: {len(egfr_list)}, Creatinine list length: {len(creatinine_list)}")
+    if egfr_list:
+        logging.info(f"DEBUG: eGFR observation data: {json.dumps(egfr_list[0], indent=2, default=str)}")
+    
     egfr_val = None
     egfr_source = ""
     egfr_date = "N/A"
@@ -1178,6 +1253,7 @@ def calculate_precise_hbr_score(raw_data, demographics):
         egfr_obs = egfr_list[0]
         # Use the new unit-aware function
         egfr_val = get_value_from_observation(egfr_obs, TARGET_UNITS['EGFR'])
+        logging.info(f"DEBUG: Extracted eGFR value: {egfr_val}")
         egfr_source = "Direct eGFR"
         egfr_date = egfr_obs.get('effectiveDateTime', 'N/A')
     elif creatinine_list and age and demographics.get('gender'):
@@ -1274,9 +1350,9 @@ def calculate_precise_hbr_score(raw_data, demographics):
             "description": "WBC count not available"
         })
     
-    # 5. Previous Bleeding History - Categorical variable: Yes = +7 points
+    # 5. Previous Bleeding History - Categorical variable: Yes = +7 points (Updated valueset logic)
     conditions = raw_data.get('conditions', [])
-    has_bleeding, bleeding_evidence = check_bleeding_history(conditions)
+    has_bleeding, bleeding_evidence = check_prior_bleeding_updated(conditions)
     
     bleeding_score = 7 if has_bleeding else 0
     total_score += bleeding_score
@@ -1289,7 +1365,7 @@ def calculate_precise_hbr_score(raw_data, demographics):
         "score": bleeding_score,
         "is_present": has_bleeding,
         "date": "N/A",
-        "description": f"Previous bleeding: {'Yes' if has_bleeding else 'No'} = {bleeding_score} points. {bleeding_evidence if bleeding_evidence else 'None detected'}"
+        "description": f"Previous bleeding: {'Yes' if has_bleeding else 'No'} = {bleeding_score} points. Found: {', '.join(bleeding_evidence) if bleeding_evidence else 'None detected'}"
     })
     
     # 6. Long-term Oral Anticoagulation - Categorical variable: Yes = +5 points
@@ -1311,21 +1387,82 @@ def calculate_precise_hbr_score(raw_data, demographics):
     })
     
     # 7. Other ARC-HBR Conditions - Categorical variable: Yes = +3 points
-    arc_hbr_factors = check_arc_hbr_factors(raw_data, medications)
-    has_arc_factors = arc_hbr_factors['has_factors']
+    # Get individual ARC-HBR factor details
+    arc_hbr_details = check_arc_hbr_factors_detailed(raw_data, medications)
+    has_arc_factors = arc_hbr_details['has_any_factor']
     
     arc_hbr_score = 3 if has_arc_factors else 0
     total_score += arc_hbr_score
     
     logging.info(f"ARC-HBR conditions score: {'Yes' if has_arc_factors else 'No'} = {arc_hbr_score} points")
     
+    # Add individual ARC-HBR elements as separate components
     components.append({
-        "parameter": "PRECISE-HBR - ARC-HBR Factors",
-        "value": f"{len(arc_hbr_factors['factors'])} factors present" if has_arc_factors else "None detected",
+        "parameter": "PRECISE-HBR - Platelet Count",
+        "value": "Yes" if arc_hbr_details['thrombocytopenia'] else "No",
+        "score": 0,  # Individual elements don't contribute separately
+        "is_present": arc_hbr_details['thrombocytopenia'],
+        "is_arc_hbr_element": True,
+        "date": "N/A",
+        "description": "Platelet count <100 ×10⁹/L"
+    })
+    
+    components.append({
+        "parameter": "PRECISE-HBR - Chronic Bleeding Diathesis",
+        "value": "Yes" if arc_hbr_details['bleeding_diathesis'] else "No",
+        "score": 0,
+        "is_present": arc_hbr_details['bleeding_diathesis'],
+        "is_arc_hbr_element": True,
+        "date": "N/A",
+        "description": "Chronic bleeding diathesis"
+    })
+    
+    components.append({
+        "parameter": "PRECISE-HBR - Liver Cirrhosis",
+        "value": "Yes" if arc_hbr_details['liver_cirrhosis'] else "No",
+        "score": 0,
+        "is_present": arc_hbr_details['liver_cirrhosis'],
+        "is_arc_hbr_element": True,
+        "date": "N/A",
+        "description": "Liver cirrhosis with portal hypertension"
+    })
+    
+    components.append({
+        "parameter": "PRECISE-HBR - Active Malignancy",
+        "value": "Yes" if arc_hbr_details['active_malignancy'] else "No",
+        "score": 0,
+        "is_present": arc_hbr_details['active_malignancy'],
+        "is_arc_hbr_element": True,
+        "date": "N/A",
+        "description": "Active malignancy"
+    })
+    
+    components.append({
+        "parameter": "PRECISE-HBR - NSAIDs/Corticosteroids",
+        "value": "Yes" if arc_hbr_details['nsaids_corticosteroids'] else "No",
+        "score": 0,
+        "is_present": arc_hbr_details['nsaids_corticosteroids'],
+        "is_arc_hbr_element": True,
+        "date": "N/A",
+        "description": "Chronic use of nsaids or corticosteroids"
+    })
+    
+    # Add summary component for ARC-HBR
+    arc_hbr_count = sum([
+        arc_hbr_details['thrombocytopenia'],
+        arc_hbr_details['bleeding_diathesis'],
+        arc_hbr_details['liver_cirrhosis'],
+        arc_hbr_details['active_malignancy'],
+        arc_hbr_details['nsaids_corticosteroids']
+    ])
+    
+    components.append({
+        "parameter": "PRECISE-HBR - ARC-HBR Summary",
+        "value": f"{arc_hbr_count} factor(s) present" if has_arc_factors else "None detected",
         "score": arc_hbr_score,
         "is_present": has_arc_factors,
         "date": "N/A",
-        "description": f"Other ARC-HBR conditions: {'Yes' if has_arc_factors else 'No'} = {arc_hbr_score} points. Factors: {', '.join(arc_hbr_factors['factors']) if arc_hbr_factors['factors'] else 'None'}"
+        "description": f"ARC-HBR Elements ≥1: {'Yes' if has_arc_factors else 'No'} = {arc_hbr_score} points"
     })
     
     # Add base score component for transparency
@@ -1455,49 +1592,214 @@ def check_oral_anticoagulation(medications):
     return False
 
 
+# Updated condition checking functions based on new valueset definitions
+
+def check_bleeding_diathesis_updated(conditions):
+    """
+    Check for chronic bleeding diathesis using updated valueset (64779008 and descendants).
+    """
+    bleeding_diathesis_snomed_codes = [
+        '64779008',  # Bleeding diathesis (disorder) - parent code
+        # Additional specific codes that would be descendants
+        '234717003',  # Coagulation factor deficiency
+        '77517001',   # Von Willebrand's disease
+        '50048000',   # Hemophilia
+        '271737000'   # Acquired coagulation disorder
+    ]
+    
+    for condition in conditions:
+        # Check SNOMED codes
+        for coding in condition.get('code', {}).get('coding', []):
+            if (coding.get('system') == 'http://snomed.info/sct' and 
+                coding.get('code') in bleeding_diathesis_snomed_codes):
+                return True, coding.get('display', 'Bleeding diathesis')
+        
+        # Check text for bleeding diathesis terms
+        condition_text = get_condition_text(condition).lower()
+        bleeding_keywords = ['bleeding disorder', 'bleeding diathesis', 'hemorrhagic diathesis', 
+                           'hemophilia', 'von willebrand', 'coagulation disorder']
+        for keyword in bleeding_keywords:
+            if keyword in condition_text:
+                return True, condition_text
+    
+    return False, None
+
+def check_prior_bleeding_updated(conditions):
+    """
+    Check for prior bleeding history using updated valueset with multiple parent codes.
+    """
+    prior_bleeding_snomed_codes = [
+        '74474003',   # Gastrointestinal hemorrhage
+        '50960005',   # Hemopericardium  
+        '1386000',    # Intracranial hemorrhage
+        '236002003',  # Retroperitoneal hematoma
+        '443826006',  # Hemoperitoneum
+        '233703007',  # Pulmonary hemorrhage
+        '59282003',   # Hemarthrosis
+        '3298000',    # Gross hematuria
+        '9957009',    # Renal hemorrhage
+        '17338001'    # Hemothorax
+    ]
+    
+    found_bleeding = []
+    
+    for condition in conditions:
+        # Check SNOMED codes
+        for coding in condition.get('code', {}).get('coding', []):
+            if (coding.get('system') == 'http://snomed.info/sct' and 
+                coding.get('code') in prior_bleeding_snomed_codes):
+                found_bleeding.append(coding.get('display', 'Prior bleeding'))
+        
+        # Check text for bleeding terms
+        condition_text = get_condition_text(condition).lower()
+        bleeding_keywords = ['hemorrhage', 'bleeding', 'hemarthrosis', 'hematuria', 'hemothorax',
+                           'hemopericardium', 'hemoperitoneum', 'retroperitoneal hematoma']
+        for keyword in bleeding_keywords:
+            if keyword in condition_text:
+                found_bleeding.append(condition_text)
+                break
+    
+    return len(found_bleeding) > 0, found_bleeding
+
+def check_liver_cirrhosis_portal_hypertension_updated(conditions):
+    """
+    Check for liver cirrhosis with portal hypertension using updated logic:
+    Requires cirrhosis (19943007) AND additional text criteria.
+    """
+    has_cirrhosis = False
+    has_additional_criteria = False
+    found_conditions = []
+    
+    # Required additional criteria (text-based)
+    additional_criteria = ['ascites', 'portal hypertension', 'esophageal varices', 'hepatic encephalopathy']
+    
+    for condition in conditions:
+        condition_text = get_condition_text(condition).lower()
+        
+        # Check for liver cirrhosis SNOMED code
+        for coding in condition.get('code', {}).get('coding', []):
+            if (coding.get('system') == 'http://snomed.info/sct' and 
+                coding.get('code') == '19943007'):
+                has_cirrhosis = True
+                found_conditions.append(coding.get('display', 'Liver cirrhosis'))
+        
+        # Also check text for cirrhosis
+        if 'cirrhosis' in condition_text:
+            has_cirrhosis = True
+            found_conditions.append(condition_text)
+        
+        # Check for additional criteria
+        for criteria in additional_criteria:
+            if criteria in condition_text:
+                has_additional_criteria = True
+                found_conditions.append(f"Found: {criteria}")
+    
+    # Must have both cirrhosis AND additional criteria
+    return (has_cirrhosis and has_additional_criteria), found_conditions
+
+def check_active_cancer_updated(conditions):
+    """
+    Check for active malignant neoplastic disease using updated logic:
+    - Include: 363346000 (Malignant neoplastic disease) and descendants
+    - Exclude: 254637007 (Basal cell carcinoma), 254632001 (Squamous cell carcinoma)
+    - Require: clinicalStatus = active
+    """
+    excluded_codes = ['254637007', '254632001']  # Skin cancers to exclude
+    malignancy_parent_code = '363346000'  # Malignant neoplastic disease
+    
+    for condition in conditions:
+        # Check clinical status first
+        clinical_status = condition.get('clinicalStatus', {})
+        if isinstance(clinical_status, dict):
+            status_code = None
+            for coding in clinical_status.get('coding', []):
+                if coding.get('system') == 'http://terminology.hl7.org/CodeSystem/condition-clinical':
+                    status_code = coding.get('code')
+                    break
+        else:
+            status_code = str(clinical_status).lower()
+        
+        # Only consider active conditions
+        if status_code != 'active':
+            continue
+        
+        # Check SNOMED codes
+        for coding in condition.get('code', {}).get('coding', []):
+            if coding.get('system') == 'http://snomed.info/sct':
+                code = coding.get('code')
+                
+                # Exclude specific skin cancers
+                if code in excluded_codes:
+                    continue
+                
+                # Include malignant neoplastic disease and descendants
+                if code == malignancy_parent_code:
+                    return True, coding.get('display', 'Active malignant neoplastic disease')
+        
+        # Check text for cancer terms (but still require active status)
+        condition_text = get_condition_text(condition).lower()
+        cancer_keywords = ['cancer', 'malignancy', 'neoplasm', 'carcinoma', 'sarcoma', 'lymphoma', 'leukemia']
+        exclusion_keywords = ['basal cell', 'squamous cell', 'skin cancer']
+        
+        # Check if it's an excluded skin cancer
+        is_excluded = any(exclusion in condition_text for exclusion in exclusion_keywords)
+        if is_excluded:
+            continue
+        
+        # Check for cancer keywords
+        for keyword in cancer_keywords:
+            if keyword in condition_text:
+                return True, condition_text
+    
+    return False, None
+
+def get_condition_text(condition):
+    """
+    Extract all text from a condition for text-based matching.
+    """
+    text_parts = []
+    
+    # Get text field
+    if condition.get('code', {}).get('text'):
+        text_parts.append(condition['code']['text'])
+    
+    # Get display text from codings
+    for coding in condition.get('code', {}).get('coding', []):
+        if coding.get('display'):
+            text_parts.append(coding['display'])
+    
+    return ' '.join(text_parts)
+
 def check_arc_hbr_factors(raw_data, medications):
     """
-    Check for ARC-HBR risk factors (excluding prior stroke per PRECISE-HBR definition).
+    Check for ARC-HBR risk factors using updated valueset logic.
     Returns dict with has_factors and list of factors found.
     """
     factors = []
+    conditions = raw_data.get('conditions', [])
     
     # Check thrombocytopenia (platelets < 100×10⁹/L)
     platelets = raw_data.get('PLATELETS', [])
     if platelets:
         plt_obs = platelets[0]
-        # Use the new unit-aware function
         plt_val = get_value_from_observation(plt_obs, TARGET_UNITS['PLATELETS'])
         if plt_val and plt_val < 100:
             factors.append("Thrombocytopenia (platelets < 100×10⁹/L)")
     
-    # Check for chronic bleeding diathesis (from conditions)
-    conditions = raw_data.get('conditions', [])
-    bleeding_diathesis_codes = ['bleeding disorder', 'hemophilia', 'von willebrand']
-    for condition in conditions:
-        condition_text = str(condition.get('code', {})).lower()
-        for code in bleeding_diathesis_codes:
-            if code in condition_text:
-                factors.append("Chronic bleeding diathesis")
-                break
+    # Check for chronic bleeding diathesis using updated logic
+    has_bleeding_diathesis, bleeding_info = check_bleeding_diathesis_updated(conditions)
+    if has_bleeding_diathesis:
+        factors.append(f"Chronic bleeding diathesis: {bleeding_info}")
     
-    # Check for active malignancy
-    cancer_codes = ['cancer', 'malignancy', 'neoplasm', 'tumor', 'carcinoma']
-    for condition in conditions:
-        condition_text = str(condition.get('code', {})).lower()
-        for code in cancer_codes:
-            if code in condition_text:
-                factors.append("Active malignancy")
-                break
+    # Check for active malignancy using updated logic
+    has_active_cancer, cancer_info = check_active_cancer_updated(conditions)
+    if has_active_cancer:
+        factors.append(f"Active malignancy: {cancer_info}")
     
-    # Check for liver cirrhosis with portal hypertension
-    liver_codes = ['cirrhosis', 'portal hypertension', 'liver disease']
-    for condition in conditions:
-        condition_text = str(condition.get('code', {})).lower()
-        for code in liver_codes:
-            if code in condition_text:
-                factors.append("Liver cirrhosis with portal hypertension")
-                break
+    # Check for liver cirrhosis with portal hypertension using updated logic
+    has_liver_condition, liver_info = check_liver_cirrhosis_portal_hypertension_updated(conditions)
+    if has_liver_condition:
+        factors.append(f"Liver cirrhosis with portal hypertension: {liver_info}")
     
     # Check for NSAIDs or corticosteroids
     drug_codes = ['nsaid', 'ibuprofen', 'naproxen', 'prednisolone', 'prednisone', 'corticosteroid']
@@ -1511,6 +1813,61 @@ def check_arc_hbr_factors(raw_data, medications):
     return {
         'has_factors': len(factors) > 0,
         'factors': factors
+    }
+
+def check_arc_hbr_factors_detailed(raw_data, medications):
+    """
+    Check for individual ARC-HBR risk factors and return detailed breakdown.
+    Returns dict with individual factor flags for UI display.
+    """
+    conditions = raw_data.get('conditions', [])
+    
+    # Check thrombocytopenia (platelets < 100×10⁹/L)
+    has_thrombocytopenia = False
+    platelets = raw_data.get('PLATELETS', [])
+    if platelets:
+        plt_obs = platelets[0]
+        plt_val = get_value_from_observation(plt_obs, TARGET_UNITS['PLATELETS'])
+        if plt_val and plt_val < 100:
+            has_thrombocytopenia = True
+    
+    # Check for chronic bleeding diathesis
+    has_bleeding_diathesis, _ = check_bleeding_diathesis_updated(conditions)
+    
+    # Check for active malignancy
+    has_active_cancer, _ = check_active_cancer_updated(conditions)
+    
+    # Check for liver cirrhosis with portal hypertension
+    has_liver_condition, _ = check_liver_cirrhosis_portal_hypertension_updated(conditions)
+    
+    # Check for NSAIDs or corticosteroids
+    has_nsaids = False
+    drug_codes = ['nsaid', 'ibuprofen', 'naproxen', 'prednisolone', 'prednisone', 'corticosteroid']
+    for med in medications:
+        med_text = str(med.get('medicationCodeableConcept', {})).lower()
+        for code in drug_codes:
+            if code in med_text:
+                has_nsaids = True
+                break
+        if has_nsaids:
+            break
+    
+    # Determine if any factor is present
+    has_any_factor = any([
+        has_thrombocytopenia,
+        has_bleeding_diathesis,
+        has_active_cancer,
+        has_liver_condition,
+        has_nsaids
+    ])
+    
+    return {
+        'has_any_factor': has_any_factor,
+        'thrombocytopenia': has_thrombocytopenia,
+        'bleeding_diathesis': has_bleeding_diathesis,
+        'active_malignancy': has_active_cancer,
+        'liver_cirrhosis': has_liver_condition,
+        'nsaids_corticosteroids': has_nsaids
     }
 
 def calculate_risk_components(raw_data, demographics):

@@ -46,6 +46,11 @@ def calculate_tradeoff_api():
     try:
         data = request.get_json()
         model = fhir_data_service.get_tradeoff_model_predictors()
+        
+        # Check if model was loaded successfully
+        if model is None:
+            logger.error("Failed to load tradeoff model. arc-hbr-model.json may be missing or invalid.")
+            return jsonify({'error': 'Tradeoff model configuration is not available. Please contact support.'}), 500
 
         # Case 1: Recalculation based on user-selected factors
         if 'active_factors' in data:
