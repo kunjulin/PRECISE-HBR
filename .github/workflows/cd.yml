@@ -23,10 +23,8 @@ jobs:
   deploy-staging:
     name: Deploy to Staging
     runs-on: ubuntu-latest
-    # Only run if on PRECISE-HBR branch or manual trigger, AND secrets are configured
-    if: |
-      (github.ref == 'refs/heads/PRECISE-HBR' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')) &&
-      github.event.repository.private == false || secrets.GCP_SA_KEY != ''
+    # Only run if on PRECISE-HBR branch or manual trigger
+    if: github.ref == 'refs/heads/PRECISE-HBR' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
     environment:
       name: staging
       url: https://staging-smart-fhir-app.appspot.com
@@ -101,10 +99,8 @@ jobs:
   deploy-production:
     name: Deploy to Production
     runs-on: ubuntu-latest
-    # Only run if on main branch or manual trigger, AND secrets are configured
-    if: |
-      (github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')) &&
-      (github.event.repository.private == false || secrets.GCP_SA_KEY != '')
+    # Only run if on main branch or manual trigger
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
     environment:
       name: production
       url: https://smart-fhir-app.appspot.com
@@ -204,14 +200,13 @@ jobs:
   rollback:
     name: Rollback (Manual)
     runs-on: ubuntu-latest
-    if: failure() && github.event_name == 'workflow_dispatch' && secrets.GCP_SA_KEY != ''
+    if: failure() && github.event_name == 'workflow_dispatch'
     needs: [deploy-production]
     environment:
       name: production
       
     steps:
     - name: Authenticate to Google Cloud
-      if: secrets.GCP_SA_KEY != ''
       uses: google-github-actions/auth@v2
       with:
         credentials_json: ${{ secrets.GCP_SA_KEY }}
