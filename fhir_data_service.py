@@ -24,7 +24,7 @@ LOINC_CODES = {
     "EGFR": ("33914-3",),          # Glomerular filtration rate/1.73 sq M predicted
     "CREATININE": ("2160-0",),      # Creatinine [mass/volume] in Serum or Plasma
     "HEMOGLOBIN": ("718-7",),       # Hemoglobin [Mass/volume] in Blood
-    "WBC": ("26464-8", "6690-2", "33256-9"),  # White blood cells [#/volume] in Blood (multiple LOINC codes)
+    "WBC": ("26464-8", "6690-2"),  # White blood cells [#/volume] in Blood by automated and manual count
     "PLATELETS": ("26515-7", "33735-5"),  # Platelet count [#/volume] in Blood
 }
 
