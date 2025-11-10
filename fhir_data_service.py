@@ -1515,13 +1515,17 @@ def get_precise_hbr_display_info(precise_hbr_score):
 
 def check_oral_anticoagulation(medications):
     """
-    Check for long-term oral anticoagulation therapy.
+    Check for long-term oral anticoagulation therapy using codes from configuration.
     Returns True if patient is on oral anticoagulants.
     """
-    anticoagulant_codes = [
-        'warfarin', 'apixaban', 'rivaroxaban', 'dabigatran', 'edoxaban',
-        'coumadin', 'eliquis', 'xarelto', 'pradaxa', 'savaysa'
-    ]
+    # Get medication keywords from configuration
+    med_config = CDSS_CONFIG.get('medication_keywords', {})
+    oac_config = med_config.get('oral_anticoagulants', {})
+    
+    anticoagulant_codes = (
+        oac_config.get('generic_names', []) + 
+        oac_config.get('brand_names', [])
+    )
     
     for med in medications:
         med_code = med.get('medicationCodeableConcept', {})
@@ -1739,8 +1743,14 @@ def check_arc_hbr_factors(raw_data, medications):
     if has_liver_condition:
         factors.append(f"Liver cirrhosis with portal hypertension: {liver_info}")
     
-    # Check for NSAIDs or corticosteroids
-    drug_codes = ['nsaid', 'ibuprofen', 'naproxen', 'prednisolone', 'prednisone', 'corticosteroid']
+    # Check for NSAIDs or corticosteroids using keywords from configuration
+    med_config = CDSS_CONFIG.get('medication_keywords', {})
+    nsaid_config = med_config.get('nsaids_corticosteroids', {})
+    drug_codes = (
+        nsaid_config.get('nsaid_keywords', []) + 
+        nsaid_config.get('corticosteroid_keywords', [])
+    )
+    
     for med in medications:
         med_text = str(med.get('medicationCodeableConcept', {})).lower()
         for code in drug_codes:
@@ -1782,9 +1792,15 @@ def check_arc_hbr_factors_detailed(raw_data, medications):
     # Check for liver cirrhosis with portal hypertension
     has_liver_condition, _ = check_liver_cirrhosis_portal_hypertension_updated(conditions)
     
-    # Check for NSAIDs or corticosteroids
+    # Check for NSAIDs or corticosteroids using keywords from configuration
     has_nsaids = False
-    drug_codes = ['nsaid', 'ibuprofen', 'naproxen', 'prednisolone', 'prednisone', 'corticosteroid']
+    med_config = CDSS_CONFIG.get('medication_keywords', {})
+    nsaid_config = med_config.get('nsaids_corticosteroids', {})
+    drug_codes = (
+        nsaid_config.get('nsaid_keywords', []) + 
+        nsaid_config.get('corticosteroid_keywords', [])
+    )
+    
     for med in medications:
         med_text = str(med.get('medicationCodeableConcept', {})).lower()
         for code in drug_codes:

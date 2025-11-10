@@ -134,6 +134,52 @@
             "description": "Thrombocytopenia (血小板減少症)"
         }
     },
+    "medication_keywords": {
+        "oral_anticoagulants": {
+            "generic_names": [
+                "warfarin",
+                "apixaban",
+                "rivaroxaban",
+                "dabigatran",
+                "edoxaban"
+            ],
+            "brand_names": [
+                "coumadin",
+                "eliquis",
+                "xarelto",
+                "pradaxa",
+                "savaysa"
+            ],
+            "rxnorm_codes": [
+                "11289",
+                "1364430",
+                "21821",
+                "1037042",
+                "1537033"
+            ],
+            "description": "Long-term oral anticoagulation therapy (長期口服抗凝劑)"
+        },
+        "nsaids_corticosteroids": {
+            "nsaid_keywords": [
+                "nsaid",
+                "ibuprofen",
+                "naproxen",
+                "diclofenac",
+                "indomethacin",
+                "celecoxib",
+                "aspirin"
+            ],
+            "corticosteroid_keywords": [
+                "corticosteroid",
+                "prednisolone",
+                "prednisone",
+                "dexamethasone",
+                "methylprednisolone",
+                "hydrocortisone"
+            ],
+            "description": "Chronic use of NSAIDs or corticosteroids (慢性使用 NSAIDs 或類固醇)"
+        }
+    },
     "bleeding_history_keywords": [
         "with bleeding",
         "with hemorrhage", 
