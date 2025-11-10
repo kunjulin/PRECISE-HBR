@@ -1712,13 +1712,17 @@ def check_arc_hbr_factors(raw_data, medications):
     factors = []
     conditions = raw_data.get('conditions', [])
     
-    # Check thrombocytopenia (platelets < 100×10⁹/L)
+    # Check thrombocytopenia using threshold from configuration
+    snomed_config = CDSS_CONFIG.get('precise_hbr_snomed_codes', {})
+    thrombocytopenia_config = snomed_config.get('thrombocytopenia', {})
+    platelet_threshold = thrombocytopenia_config.get('threshold', {}).get('value', 100)
+    
     platelets = raw_data.get('PLATELETS', [])
     if platelets:
         plt_obs = platelets[0]
         plt_val = get_value_from_observation(plt_obs, TARGET_UNITS['PLATELETS'])
-        if plt_val and plt_val < 100:
-            factors.append("Thrombocytopenia (platelets < 100×10⁹/L)")
+        if plt_val and plt_val < platelet_threshold:
+            factors.append(f"Thrombocytopenia (platelets < {platelet_threshold}×10⁹/L)")
     
     # Check for chronic bleeding diathesis using updated logic
     has_bleeding_diathesis, bleeding_info = check_bleeding_diathesis_updated(conditions)
@@ -1756,13 +1760,17 @@ def check_arc_hbr_factors_detailed(raw_data, medications):
     """
     conditions = raw_data.get('conditions', [])
     
-    # Check thrombocytopenia (platelets < 100×10⁹/L)
+    # Check thrombocytopenia using threshold from configuration
+    snomed_config = CDSS_CONFIG.get('precise_hbr_snomed_codes', {})
+    thrombocytopenia_config = snomed_config.get('thrombocytopenia', {})
+    platelet_threshold = thrombocytopenia_config.get('threshold', {}).get('value', 100)
+    
     has_thrombocytopenia = False
     platelets = raw_data.get('PLATELETS', [])
     if platelets:
         plt_obs = platelets[0]
         plt_val = get_value_from_observation(plt_obs, TARGET_UNITS['PLATELETS'])
-        if plt_val and plt_val < 100:
+        if plt_val and plt_val < platelet_threshold:
             has_thrombocytopenia = True
     
     # Check for chronic bleeding diathesis

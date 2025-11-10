@@ -119,12 +119,19 @@
             "parent_code": "19943007",
             "description": "Liver cirrhosis with portal hypertension"
         },
-        "stroke_ischemic": {
-            "parent_code": "422504002",
-            "severity_codes": {
-                "moderate_severe": ["230690007", "230691006"]
+        "thrombocytopenia": {
+            "parent_code": "415116008",
+            "specific_codes": [
+                "415116008",
+                "302872006",
+                "234381000"
+            ],
+            "threshold": {
+                "value": 100,
+                "unit": "10^9/L",
+                "description": "Platelet count < 100 ×10⁹/L"
             },
-            "description": "Ischemic stroke (moderate to severe)"
+            "description": "Thrombocytopenia (血小板減少症)"
         }
     },
     "bleeding_history_keywords": [
