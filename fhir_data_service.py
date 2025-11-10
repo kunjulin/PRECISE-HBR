@@ -19,7 +19,7 @@ except json.JSONDecodeError:
     logging.error("CRITICAL: cdss_config.json is not valid JSON. Calculations will fail.")
     CDSS_CONFIG = {}
 
-# --- Load LOINC codes from configuration ---
+# --- Load LOINC codes and text search terms from configuration ---
 def _get_loinc_codes():
     """
     Load LOINC codes from cdss_config.json.
@@ -38,8 +38,27 @@ def _get_loinc_codes():
         "PLATELETS": tuple(lab_config.get('platelet_loinc_codes', [])),
     }
 
-# Initialize LOINC_CODES from configuration
+def _get_text_search_terms():
+    """
+    Load text search terms from cdss_config.json.
+    Returns dictionary mapping observation types to list of text search terms.
+    """
+    if not CDSS_CONFIG:
+        return {}
+    
+    lab_config = CDSS_CONFIG.get('laboratory_value_extraction', {})
+    
+    return {
+        "EGFR": lab_config.get('egfr_text_search', []),
+        "CREATININE": lab_config.get('creatinine_text_search', []),
+        "HEMOGLOBIN": lab_config.get('hemoglobin_text_search', []),
+        "WBC": lab_config.get('wbc_text_search', []),
+        "PLATELETS": lab_config.get('platelet_text_search', []),
+    }
+
+# Initialize LOINC_CODES and TEXT_SEARCH_TERMS from configuration
 LOINC_CODES = _get_loinc_codes()
+TEXT_SEARCH_TERMS = _get_text_search_terms()
 
 # --- Unit Conversion System ---
 
@@ -219,35 +238,74 @@ def get_fhir_data(fhir_server_url, access_token, patient_id, client_id):
         
         # Fetch observations by LOINC codes for PRECISE-HBR parameters
         for resource_type, codes in LOINC_CODES.items():
+            obs_list = []
+            
             try:
-                # Search for observations with specific LOINC codes
-                # Using more compatible query parameters
-                search_params = {
-                    'patient': patient_id,
-                    'code': ','.join(codes),
-                    '_count': '5'  # Get a few results to find the most recent
-                }
-                
-                observations = observation.Observation.where(search_params).perform(smart.server)
-                obs_list = []
-                
-                if observations.entry:
-                    # Sort by effective date in memory (more compatible than _sort parameter)
-                    sorted_entries = []
-                    for entry in observations.entry:
-                        if entry.resource:
-                            resource_json = entry.resource.as_json()
-                            # Extract date for sorting
-                            date_str = resource_json.get('effectiveDateTime') or resource_json.get('effectivePeriod', {}).get('start') or '1900-01-01'
-                            sorted_entries.append((date_str, resource_json))
+                # First, try searching by LOINC codes
+                if codes:
+                    search_params = {
+                        'patient': patient_id,
+                        'code': ','.join(codes),
+                        '_count': '5'  # Get a few results to find the most recent
+                    }
                     
-                    # Sort by date (most recent first) and take the first one
-                    sorted_entries.sort(key=lambda x: x[0], reverse=True)
-                    if sorted_entries:
-                        obs_list.append(sorted_entries[0][1])  # Take the most recent
+                    observations = observation.Observation.where(search_params).perform(smart.server)
+                    
+                    if observations.entry:
+                        # Sort by effective date in memory (more compatible than _sort parameter)
+                        sorted_entries = []
+                        for entry in observations.entry:
+                            if entry.resource:
+                                resource_json = entry.resource.as_json()
+                                # Extract date for sorting
+                                date_str = resource_json.get('effectiveDateTime') or resource_json.get('effectivePeriod', {}).get('start') or '1900-01-01'
+                                sorted_entries.append((date_str, resource_json))
+                        
+                        # Sort by date (most recent first) and take the first one
+                        sorted_entries.sort(key=lambda x: x[0], reverse=True)
+                        if sorted_entries:
+                            obs_list.append(sorted_entries[0][1])  # Take the most recent
+                            logging.info(f"Successfully fetched {resource_type} observation by LOINC code")
+                
+                # If no results from LOINC codes, try text search as fallback
+                if not obs_list and resource_type in TEXT_SEARCH_TERMS:
+                    text_terms = TEXT_SEARCH_TERMS[resource_type]
+                    if text_terms:
+                        logging.info(f"No results from LOINC codes for {resource_type}, attempting text search with terms: {text_terms}")
+                        
+                        # Try each text search term
+                        for term in text_terms:
+                            try:
+                                text_search_params = {
+                                    'patient': patient_id,
+                                    'code:text': term,
+                                    '_count': '5'
+                                }
+                                
+                                text_observations = observation.Observation.where(text_search_params).perform(smart.server)
+                                
+                                if text_observations.entry:
+                                    sorted_entries = []
+                                    for entry in text_observations.entry:
+                                        if entry.resource:
+                                            resource_json = entry.resource.as_json()
+                                            date_str = resource_json.get('effectiveDateTime') or resource_json.get('effectivePeriod', {}).get('start') or '1900-01-01'
+                                            sorted_entries.append((date_str, resource_json))
+                                    
+                                    sorted_entries.sort(key=lambda x: x[0], reverse=True)
+                                    if sorted_entries:
+                                        obs_list.append(sorted_entries[0][1])
+                                        logging.info(f"Successfully fetched {resource_type} observation by text search: '{term}'")
+                                        break  # Found a result, stop searching
+                            except Exception as text_error:
+                                logging.debug(f"Text search failed for term '{term}': {type(text_error).__name__}")
+                                continue
                 
                 raw_data[resource_type] = obs_list
-                logging.info(f"Successfully fetched {len(obs_list)} {resource_type} observation(s)")
+                if obs_list:
+                    logging.info(f"Final result: {len(obs_list)} {resource_type} observation(s)")
+                else:
+                    logging.warning(f"No {resource_type} observations found for patient {patient_id}")
                 
             except Exception as e:
                 # Sanitize logging

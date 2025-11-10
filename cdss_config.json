@@ -109,17 +109,41 @@
         "hemoglobin_loinc_codes": [
             "718-7"
         ],
+        "hemoglobin_text_search": [
+            "Hemoglobin",
+            "Hgb",
+            "Hb"
+        ],
         "creatinine_loinc_codes": [
             "2160-0"
+        ],
+        "creatinine_text_search": [
+            "Creatinine",
+            "Creat"
         ],
         "egfr_loinc_codes": [
             "33914-3"
         ],
+        "egfr_text_search": [
+            "Estimated GFR",
+            "eGFR",
+            "Glomerular filtration rate"
+        ],
         "white_blood_cell_loinc_codes": [
             "6690-2"
         ],
+        "wbc_text_search": [
+            "WBC",
+            "White blood cell",
+            "Leukocytes"
+        ],
         "platelet_loinc_codes": [
             "26515-7"
+        ],
+        "platelet_text_search": [
+            "Platelets",
+            "Platelet count",
+            "PLT"
         ],
         "unit_conversions": {
             "hemoglobin": {
