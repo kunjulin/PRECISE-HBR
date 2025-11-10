@@ -19,15 +19,27 @@ except json.JSONDecodeError:
     logging.error("CRITICAL: cdss_config.json is not valid JSON. Calculations will fail.")
     CDSS_CONFIG = {}
 
-# --- Configuration for LOINC codes (PRECISE-HBR) ---
-# Simplified to use only the most common LOINC code for each observation
-LOINC_CODES = {
-    "EGFR": ("33914-3",),          # Glomerular filtration rate/1.73 sq M predicted
-    "CREATININE": ("2160-0",),     # Creatinine [mass/volume] in Serum or Plasma (most common)
-    "HEMOGLOBIN": ("718-7",),      # Hemoglobin [Mass/volume] in Blood (most common)
-    "WBC": ("6690-2",),            # Leukocytes [#/volume] in Blood by Automated count (most common)
-    "PLATELETS": ("26515-7",),     # Platelets [#/volume] in Blood by Automated count (most common)
-}
+# --- Load LOINC codes from configuration ---
+def _get_loinc_codes():
+    """
+    Load LOINC codes from cdss_config.json.
+    Returns dictionary mapping observation types to LOINC code tuples.
+    """
+    if not CDSS_CONFIG:
+        return {}
+    
+    lab_config = CDSS_CONFIG.get('laboratory_value_extraction', {})
+    
+    return {
+        "EGFR": tuple(lab_config.get('egfr_loinc_codes', [])),
+        "CREATININE": tuple(lab_config.get('creatinine_loinc_codes', [])),
+        "HEMOGLOBIN": tuple(lab_config.get('hemoglobin_loinc_codes', [])),
+        "WBC": tuple(lab_config.get('white_blood_cell_loinc_codes', [])),
+        "PLATELETS": tuple(lab_config.get('platelet_loinc_codes', [])),
+    }
+
+# Initialize LOINC_CODES from configuration
+LOINC_CODES = _get_loinc_codes()
 
 # --- Unit Conversion System ---
 
