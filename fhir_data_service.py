@@ -125,6 +125,12 @@ def get_fhir_data(fhir_server_url, access_token, patient_id, client_id):
     Returns a dictionary of FHIR resources and an error message if any.
     """
     try:
+        # Detect test mode (for development/testing without OAuth)
+        is_test_mode = (access_token == 'test-mode-no-auth')
+        
+        if is_test_mode:
+            logging.info(f"TEST MODE: Fetching data without authentication from {fhir_server_url}")
+        
         # Set up FHIR client settings following smart-on-fhir/client-py best practices
         settings = {
             'app_id': client_id,
@@ -136,7 +142,8 @@ def get_fhir_data(fhir_server_url, access_token, patient_id, client_id):
         smart = client.FHIRClient(settings=settings)
         
         # Set authorization using the standard fhirclient approach
-        if access_token:
+        # Skip authorization setup in test mode for public FHIR servers
+        if access_token and not is_test_mode:
             # Method 1: Use the built-in authorize method (most compatible)
             smart.prepare()
             
@@ -162,11 +169,27 @@ def get_fhir_data(fhir_server_url, access_token, patient_id, client_id):
                 import requests
                 smart.server.session = requests.Session()
                 smart.server.session.headers.update(headers)
+        elif is_test_mode:
+            # Test mode: Set up session without authentication
+            # This allows accessing public FHIR servers
+            import requests
+            smart.prepare()
             
-            # Set up custom adapter with timeout for the session
+            if not hasattr(smart.server, 'session'):
+                smart.server.session = requests.Session()
+            
+            # Set headers without Authorization
+            headers = {
+                'Accept': 'application/fhir+json, application/json',
+                'Content-Type': 'application/fhir+json'
+            }
+            smart.server.session.headers.update(headers)
+            logging.info("TEST MODE: Session configured for public FHIR access")
+        
+        # Set up custom adapter with timeout for the session (for both modes)
+        if hasattr(smart.server, 'session'):
             import requests
             from requests.adapters import HTTPAdapter
-            from urllib3.util.retry import Retry
             
             # Configure custom adapter with longer timeout
             class TimeoutHTTPAdapter(HTTPAdapter):
@@ -183,10 +206,10 @@ def get_fhir_data(fhir_server_url, access_token, patient_id, client_id):
             smart.server.session.mount('http://', adapter)
             smart.server.session.mount('https://', adapter)
             
-            # Also set the _auth for backward compatibility
-            smart.server._auth = None  # Clear old auth
-            
-            logging.info(f"Set authorization header with token length: {len(access_token)}")
+            if not is_test_mode:
+                # Also set the _auth for backward compatibility (production mode only)
+                smart.server._auth = None  # Clear old auth
+                logging.info(f"Set authorization header with token length: {len(access_token)}")
             logging.info(f"FHIR Server prepared for: {fhir_server_url}")
         
         # Test the connection with a simple patient fetch first

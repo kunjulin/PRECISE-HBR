@@ -13,12 +13,36 @@
         min-height: 60vh; /* Adjust as needed */
     }
     .launch-card {
-        max-width: 500px;
+        max-width: 600px;
         width: 100%;
         padding: 2rem;
         background: white;
         border-radius: 0.5rem;
         box-shadow: 0 0.5rem 1rem rgba(0,0,0,0.1);
+    }
+    .preset-server {
+        margin-bottom: 1rem;
+    }
+    .preset-button {
+        width: 100%;
+        text-align: left;
+        padding: 0.75rem;
+        border: 1px solid #dee2e6;
+        border-radius: 0.25rem;
+        background: #f8f9fa;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .preset-button:hover {
+        background: #e9ecef;
+        border-color: #0d6efd;
+    }
+    .preset-button strong {
+        display: block;
+        color: #0d6efd;
+    }
+    .preset-button small {
+        color: #6c757d;
     }
 </style>
 
@@ -26,10 +50,37 @@
     <div class="launch-card">
         <h2 class="text-center mb-4">Standalone App Launch</h2>
         <p class="text-muted text-center mb-4">Enter the FHIR Server URL (ISS) to launch the application.</p>
-        <form action="{{ url_for('initiate_launch') }}" method="POST">
+        
+        <!-- Quick Test Mode -->
+        <div class="alert alert-info mb-4">
+            <h6 class="mb-2">🚀 快速測試模式</h6>
+            <p class="small mb-2">想要快速測試而無需 OAuth 授權？</p>
+            <a href="/test-mode" class="btn btn-sm btn-info">進入測試模式</a>
+            <a href="/test-patients" class="btn btn-sm btn-outline-info">選擇測試患者</a>
+        </div>
+
+        <!-- Preset Servers -->
+        <div class="mb-4">
+            <h6 class="mb-3">快速選擇測試服務器:</h6>
+            <div class="preset-server">
+                <button type="button" class="preset-button" onclick="setIss('https://launch.smarthealthit.org/v/r4/fhir')">
+                    <strong>SMART Health IT R4 Launcher</strong>
+                    <small>https://launch.smarthealthit.org/v/r4/fhir</small>
+                </button>
+            </div>
+        </div>
+
+        <hr class="my-4">
+
+        <form id="launchForm" action="{{ url_for('initiate_launch') }}" method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="mb-3">
                 <label for="iss" class="form-label">FHIR Server URL (ISS)</label>
-                <input type="url" class="form-control" id="iss" name="iss" placeholder="https://fhir.example.com/r4" required>
+                <input type="url" class="form-control" id="iss" name="iss" 
+                       placeholder="https://fhir.example.com/r4" required>
+                <small class="form-text text-muted">
+                    輸入支持 SMART on FHIR 的 FHIR 服務器 URL
+                </small>
             </div>
             <div class="d-grid">
                 <button type="submit" class="btn btn-primary btn-lg">Launch</button>
@@ -37,4 +88,10 @@
         </form>
     </div>
 </div>
+
+<script>
+function setIss(url) {
+    document.getElementById('iss').value = url;
+}
+</script>
 {% endblock %}

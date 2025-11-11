@@ -1,6 +1,7 @@
 import logging
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify, Response
 import os
+import sys
 import datetime
 from fhirclient import client
 import fhir_data_service
@@ -410,78 +411,19 @@ def standalone_launch_page():
 
 @app.route('/initiate-launch', methods=['POST'])
 def initiate_launch():
+    """Handle standalone launch initiation from the form."""
     iss = request.form.get('iss')
     if not iss:
         return render_error_page("Launch Error", "'iss' (FHIR Server URL) is missing.")
-    return redirect(url_for('launch', iss=iss))
+    # Redirect to auth.launch with iss parameter for standalone launch
+    return redirect(url_for('auth.launch', iss=iss))
 
 @app.route('/docs')
 def docs_page():
     """Renders the documentation page."""
     return render_template('docs.html')
 
-@app.route('/launch')
-def launch():
-    """SMART on FHIR launch sequence."""
-    try:
-        iss = request.args.get('iss')
-        if not iss:
-            return render_error_page("Launch Error", "Required 'iss' parameter is missing.")
-
-        auth_url = None
-        token_url = None
-
-        # Standard discovery mechanism.
-        smart_config_url = f"{iss.rstrip('/')}/.well-known/smart-configuration"
-        try:
-            config_response = requests.get(smart_config_url, headers={'Accept': 'application/json'}, timeout=10)
-            config_response.raise_for_status()
-            smart_config = config_response.json()
-            auth_url = smart_config.get('authorization_endpoint')
-            token_url = smart_config.get('token_endpoint')
-        except (requests.exceptions.RequestException, ValueError) as e:
-            app.logger.warning(f"Failed to fetch .well-known/smart-configuration: {e}. Falling back.")
-            try:
-                fhir_client = client.FHIRClient(settings={'app_id': 'my_app', 'api_base': iss})
-                auth_url = fhir_client.server.auth_settings.get('authorize_uri')
-                token_url = fhir_client.server.auth_settings.get('token_uri')
-            except Exception as conf_e:
-                return render_error_page("FHIR Config Error", f"Could not retrieve auth endpoints from {iss}. Details: {conf_e}")
-
-        if not auth_url or not token_url:
-            return render_error_page("FHIR Config Error", f"Could not determine authorization and token endpoints for ISS: {iss}")
-
-        code_verifier = base64.urlsafe_b64encode(os.urandom(32)).rstrip(b'=').decode('utf-8')
-        code_challenge = base64.urlsafe_b64encode(hashlib.sha256(code_verifier.encode('utf-8')).digest()).rstrip(b'=').decode('utf-8')
-        session['launch_params'] = {'iss': iss, 'token_url': token_url, 'code_verifier': code_verifier}
-        
-        auth_params = {
-            'response_type': 'code',
-            'client_id': CLIENT_ID,
-            'redirect_uri': REDIRECT_URI,
-            'scope': SMART_SCOPES,
-            'state': base64.urlsafe_b64encode(os.urandom(16)).rstrip(b'=').decode('utf-8'),
-            'aud': iss,
-            'launch': request.args.get('launch'),
-            'code_challenge': code_challenge,
-            'code_challenge_method': 'S256'
-        }
-        full_auth_url = f"{auth_url}?{requests.compat.urlencode(auth_params)}"
-        return redirect(full_auth_url)
-    except Exception as e:
-        app.logger.error(f"Unexpected error in /launch: {e}", exc_info=True)
-        return render_error_page("Launch Error", f"An unexpected error occurred during launch: {e}")
-
-@app.route('/callback')
-def callback():
-    return render_template('callback.html')
-
-@app.route('/main')
-@login_required
-@audit_ephi_access(action='view_risk_calculator', resource_type='Patient')
-def main_page():
-    patient_id = session.get('patient_id', 'N/A')
-    return render_template('main.html', patient_id=patient_id)
+# Note: /launch, /callback, and /main routes are now handled by blueprints (auth_bp and views_bp)
 
 @app.route('/report-issue')
 def report_issue_page():
@@ -629,8 +571,6 @@ csrf = CSRFProtect()
 csrf.init_app(app)
 
 # Exempt specific routes from CSRF protection
-csrf.exempt(launch)
-csrf.exempt(callback)
 csrf.exempt(exchange_code)
 csrf.exempt(calculate_risk_api)
 csrf.exempt(export_ccd_api)  # Exempt CCD export API
@@ -648,9 +588,20 @@ CORS(app, resources={
     }
 })
 
+# Import local blueprints
+# Note: Renamed auth.py to smart_auth.py to avoid conflict with fhirclient's internal auth module
+import smart_auth
+import views
+
 # Register blueprints
+app.register_blueprint(smart_auth.auth_bp)  # Authentication routes
+app.register_blueprint(views.views_bp)  # Main application views
 app.register_blueprint(tradeoff_bp)  # Tradeoff analysis
 app.register_blueprint(hooks_bp)  # CDS Hooks
+
+# Exempt auth and views blueprints from CSRF (they handle OAuth flows)
+csrf.exempt(smart_auth.auth_bp)
+csrf.exempt(views.views_bp)
 
 if __name__ == '__main__':
     # R-08 Risk Mitigation: Enhanced production environment checks

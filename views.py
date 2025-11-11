@@ -129,3 +129,115 @@ def logout():
 def health_check():
     """Health check endpoint for container orchestration."""
     return jsonify({"status": "ok"}), 200
+
+
+@views_bp.route('/test-mode')
+def test_mode():
+    """
+    Development/Test mode - Direct access without OAuth for testing.
+    WARNING: Only use this in development environments!
+    """
+    # Allow custom FHIR server from URL parameter, or use default
+    test_fhir_server = request.args.get('server', 'https://launch.smarthealthit.org/v/r4/fhir')
+    
+    # Allow custom patient ID from URL parameter, or use default
+    test_patient_id = request.args.get('patient_id', 'smart-1288992')
+    
+    # Create a mock session for testing
+    session['fhir_data'] = {
+        'token': 'test-mode-no-auth',
+        'patient': test_patient_id,
+        'server': test_fhir_server,
+        'client_id': 'test-mode',
+        'token_type': 'Bearer',
+        'expires_in': 3600,
+        'scope': 'patient/*.read',
+        'test_mode': True  # Flag to indicate this is test mode
+    }
+    session['patient_id'] = test_patient_id
+    
+    logging.info(f"Test mode activated - Server: {test_fhir_server}, Patient: {test_patient_id}")
+    
+    return redirect(url_for('views.main_page'))
+
+
+@views_bp.route('/test-patients')
+def test_patients():
+    """
+    Fetch and display a list of patients from a FHIR server for testing.
+    """
+    # Get FHIR server from query parameter or use default
+    fhir_server = request.args.get('server', 'https://launch.smarthealthit.org/v/r4/fhir')
+    
+    patients = []
+    error = None
+    
+    try:
+        # Fetch patients from FHIR server
+        # Note: Some servers may require authentication, but SMART Health IT allows public access to some resources
+        response = requests.get(
+            f"{fhir_server}/Patient",
+            params={'_count': 20},  # Limit to 20 patients
+            headers={'Accept': 'application/fhir+json'},
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            bundle = response.json()
+            
+            if bundle.get('resourceType') == 'Bundle' and 'entry' in bundle:
+                for entry in bundle['entry']:
+                    patient = entry.get('resource', {})
+                    if patient.get('resourceType') == 'Patient':
+                        # Extract patient information
+                        patient_id = patient.get('id', 'Unknown')
+                        
+                        # Get name
+                        names = patient.get('name', [])
+                        if names and len(names) > 0:
+                            name_obj = names[0]
+                            given = ' '.join(name_obj.get('given', []))
+                            family = name_obj.get('family', '')
+                            full_name = f"{given} {family}".strip()
+                        else:
+                            full_name = 'Unknown Name'
+                        
+                        # Get other details
+                        gender = patient.get('gender', 'Unknown')
+                        birth_date = patient.get('birthDate', 'Unknown')
+                        
+                        patients.append({
+                            'id': patient_id,
+                            'name': full_name,
+                            'gender': gender.capitalize() if gender else 'Unknown',
+                            'birthDate': birth_date,
+                            'description': f'{gender.capitalize() if gender else "Unknown"} patient'
+                        })
+            else:
+                error = "No patients found in the response"
+        else:
+            error = f"Failed to fetch patients: HTTP {response.status_code}"
+            
+    except requests.exceptions.RequestException as e:
+        error = f"Error connecting to FHIR server: {str(e)}"
+        logging.error(f"Error fetching patients from {fhir_server}: {e}")
+    except Exception as e:
+        error = f"Error processing patient data: {str(e)}"
+        logging.error(f"Error processing patients: {e}", exc_info=True)
+    
+    # If no patients were found or there was an error, provide some default test patients
+    if not patients:
+        patients = [
+            {
+                'id': 'smart-1288992',
+                'name': 'Amy V. Shaw',
+                'gender': 'Female',
+                'birthDate': '2007-03-20',
+                'description': 'Default test patient (fallback)'
+            }
+        ]
+    
+    return render_template('test_patients.html', 
+                         patients=patients, 
+                         fhir_server=fhir_server,
+                         error=error)

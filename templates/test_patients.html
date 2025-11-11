@@ -1,0 +1,120 @@
+{% extends "layout.html" %}
+
+{% block title %}Test Patients - Development Mode{% endblock %}
+
+{% block content %}
+<style>
+    .test-warning {
+        background: #fff3cd;
+        border: 2px solid #ffc107;
+        border-radius: 0.5rem;
+        padding: 1rem;
+        margin-bottom: 2rem;
+    }
+    .patient-card {
+        border: 1px solid #dee2e6;
+        border-radius: 0.5rem;
+        padding: 1.5rem;
+        margin-bottom: 1rem;
+        transition: all 0.2s;
+    }
+    .patient-card:hover {
+        box-shadow: 0 0.5rem 1rem rgba(0,0,0,0.1);
+        border-color: #0d6efd;
+    }
+</style>
+
+<div class="container mt-4">
+    <div class="test-warning">
+        <h5>⚠️ 開發/測試模式</h5>
+        <p class="mb-0">
+            此頁面僅供開發和測試使用。這些是從 FHIR 服務器實時獲取的患者數據。
+            <strong>請勿在生產環境中使用此功能。</strong>
+        </p>
+    </div>
+
+    <h2 class="mb-4">測試患者列表</h2>
+    
+    <!-- Server Selection -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <h6 class="card-title">選擇 FHIR 服務器</h6>
+            <form method="GET" class="row g-3">
+                <div class="col-md-9">
+                    <input type="url" class="form-control" name="server" 
+                           value="{{ fhir_server }}" 
+                           placeholder="https://launch.smarthealthit.org/v/r4/fhir">
+                </div>
+                <div class="col-md-3">
+                    <button type="submit" class="btn btn-primary w-100">載入患者</button>
+                </div>
+            </form>
+            <small class="text-muted">
+                當前服務器: <code>{{ fhir_server }}</code>
+            </small>
+        </div>
+    </div>
+
+    {% if error %}
+    <div class="alert alert-warning alert-dismissible fade show" role="alert">
+        <strong>⚠️ 警告：</strong> {{ error }}
+        <br><small>顯示默認的備用測試患者。</small>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endif %}
+
+    <p class="text-muted mb-4">
+        選擇一個測試患者來直接測試應用功能（無需 OAuth 授權）<br>
+        <small>共找到 <strong>{{ patients|length }}</strong> 位患者</small>
+    </p>
+
+    <div class="row">
+        {% for patient in patients %}
+        <div class="col-md-6 mb-3">
+            <div class="patient-card">
+                <h5>{{ patient.name }}</h5>
+                <p class="text-muted mb-2">
+                    <strong>Patient ID:</strong> <code>{{ patient.id }}</code><br>
+                    <strong>Gender:</strong> {{ patient.gender }}<br>
+                    <strong>Birth Date:</strong> {{ patient.birthDate }}<br>
+                    <small>{{ patient.description }}</small>
+                </p>
+                <a href="{{ url_for('views.test_mode') }}?patient_id={{ patient.id }}&server={{ fhir_server }}" 
+                   class="btn btn-primary">
+                    使用此患者測試
+                </a>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <hr class="my-4">
+
+    <div class="card">
+        <div class="card-body">
+            <h5 class="card-title">其他測試選項</h5>
+            <div class="list-group list-group-flush">
+                <a href="{{ url_for('views.test_mode') }}" class="list-group-item list-group-item-action">
+                    <strong>快速測試模式</strong><br>
+                    <small>使用默認測試患者 (Amy V. Shaw) 直接進入主應用</small>
+                </a>
+                <a href="/standalone" class="list-group-item list-group-item-action">
+                    <strong>Standalone Launch（完整 OAuth）</strong><br>
+                    <small>使用完整的 SMART on FHIR 授權流程</small>
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="mt-4">
+        <h6>技術說明</h6>
+        <ul class="small text-muted">
+            <li>這些患者來自 SMART Health IT 公開測試服務器</li>
+            <li>服務器 URL: <code>https://launch.smarthealthit.org/v/r4/fhir</code></li>
+            <li>測試模式會創建一個模擬 session，無需實際的 OAuth token</li>
+            <li>在生產環境中，請務必禁用此功能或添加適當的訪問控制</li>
+        </ul>
+    </div>
+</div>
+{% endblock %}
+

@@ -147,11 +147,18 @@ def launch():
             title="Configuration Error",
             message="SMART configuration is missing 'authorization_endpoint'.")
 
+    # Adjust scopes based on launch type
+    # For standalone launch (no launch token), remove 'launch' scope
+    scopes = Config.SCOPES
+    if not launch_token:
+        # Remove 'launch' scope for standalone launch
+        scopes = ' '.join([s for s in scopes.split() if s != 'launch'])
+    
     auth_params = {
         "response_type": "code",
         "client_id": Config.CLIENT_ID,
         "redirect_uri": Config.REDIRECT_URI,
-        "scope": Config.SCOPES,
+        "scope": scopes,
         "state": state,
         "aud": iss,
         "code_challenge": code_challenge,
