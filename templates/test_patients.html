@@ -39,6 +39,24 @@
     <div class="card mb-4">
         <div class="card-body">
             <h6 class="card-title">選擇 FHIR 服務器</h6>
+            
+            <!-- Preset Server Buttons -->
+            <div class="mb-3">
+                <div class="btn-group flex-wrap" role="group">
+                    <a href="?server=https://launch.smarthealthit.org/v/r4/fhir" class="btn btn-sm btn-outline-primary">
+                        SMART Health IT
+                    </a>
+                    <a href="?server=https://r4.smarthealthit.org" class="btn btn-sm btn-outline-primary">
+                        Logica Sandbox
+                    </a>
+                    <a href="?server=https://hapi.fhir.org/baseR4" class="btn btn-sm btn-outline-primary">
+                        HAPI FHIR
+                    </a>
+                </div>
+                <small class="text-muted d-block mt-2">⚡ 點擊快速切換服務器</small>
+            </div>
+            
+            <!-- Custom Server Input -->
             <form method="GET" class="row g-3">
                 <div class="col-md-9">
                     <input type="url" class="form-control" name="server" 

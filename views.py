@@ -179,7 +179,7 @@ def test_patients():
             f"{fhir_server}/Patient",
             params={'_count': 20},  # Limit to 20 patients
             headers={'Accept': 'application/fhir+json'},
-            timeout=10
+            timeout=30  # Increased timeout for slower servers
         )
         
         if response.status_code == 200:

@@ -60,7 +60,7 @@ def get_smart_config(fhir_server_url):
         fhir_server_url += '/'
     try:
         url = urljoin(fhir_server_url, ".well-known/smart-configuration")
-        response = requests.get(url, headers={'Accept': 'application/json'}, timeout=10)
+        response = requests.get(url, headers={'Accept': 'application/json'}, timeout=30)
         response.raise_for_status()
         config = response.json()
         if 'authorization_endpoint' in config and 'token_endpoint' in config:
@@ -70,7 +70,7 @@ def get_smart_config(fhir_server_url):
             f"Failed to fetch from .well-known: {e}. Falling back to /metadata.")
     try:
         url = urljoin(fhir_server_url, "metadata")
-        response = requests.get(url, headers={'Accept': 'application/json'}, timeout=10)
+        response = requests.get(url, headers={'Accept': 'application/json'}, timeout=30)
         response.raise_for_status()
         capability_statement = response.json()
         for rest in capability_statement.get('rest', []):
