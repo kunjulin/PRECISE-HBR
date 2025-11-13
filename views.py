@@ -196,9 +196,13 @@ def test_patients():
                         names = patient.get('name', [])
                         if names and len(names) > 0:
                             name_obj = names[0]
-                            given = ' '.join(name_obj.get('given', []))
-                            family = name_obj.get('family', '')
-                            full_name = f"{given} {family}".strip()
+                            # Try text field first (for Taiwan FHIR format)
+                            if name_obj.get('text'):
+                                full_name = name_obj.get('text')
+                            else:
+                                given = ' '.join(name_obj.get('given', []))
+                                family = name_obj.get('family', '')
+                                full_name = f"{given} {family}".strip()
                         else:
                             full_name = 'Unknown Name'
                         

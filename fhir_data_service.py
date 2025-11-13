@@ -70,6 +70,7 @@ TARGET_UNITS = {
         'factors': {
             'g/l': 0.1,
             'mmol/l': 1.61135, # Based on Hb molar mass of 64,458 g/mol, factor is MW / 10 / 3.87
+            'mg/dl': 0.001,    # mg/dL to g/dL (1 g = 1000 mg)
         }
     },
     'CREATININE': {
@@ -784,7 +785,11 @@ def get_patient_demographics(patient_resource):
     # Name
     if patient_resource.get("name"):
         name_data = patient_resource["name"][0]
-        demographics["name"] = " ".join(name_data.get("given", []) + [name_data.get("family", "")]).strip()
+        # Try text field first (for Taiwan FHIR format), then fall back to given/family
+        if name_data.get("text"):
+            demographics["name"] = name_data.get("text")
+        else:
+            demographics["name"] = " ".join(name_data.get("given", []) + [name_data.get("family", "")]).strip()
 
     # Gender
     demographics["gender"] = patient_resource.get("gender")
@@ -946,6 +951,13 @@ def get_value_from_observation(obs, unit_system):
         
     source_unit = value_quantity.get('unit', '').lower()
     target_unit = unit_system['unit']
+    
+    # 0. If unit is missing/empty, assume the value is already in the target unit
+    # This handles FHIR servers that don't provide unit information
+    if not source_unit or source_unit.strip() == '':
+        logging.warning(f"No unit provided for Observation value {value}. "
+                       f"Assuming it is already in target unit '{target_unit}'.")
+        return value
     
     # 1. Direct match
     if source_unit == target_unit:

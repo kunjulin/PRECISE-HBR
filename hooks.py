@@ -165,9 +165,13 @@ def handle_precise_hbr_bleeding_risk_hook():
         patient_name = "Patient"
         if patient_data:
             name_data = patient_data.get('name', [{}])[0]
-            given = " ".join(name_data.get('given', []))
-            family = name_data.get('family', "")
-            patient_name = f"{given} {family}".strip() or patient_id
+            # Try text field first (for Taiwan FHIR format)
+            if name_data.get('text'):
+                patient_name = name_data.get('text')
+            else:
+                given = " ".join(name_data.get('given', []))
+                family = name_data.get('family', "")
+                patient_name = f"{given} {family}".strip() or patient_id
 
         medications = prefetch.get('medications', {}).get('entry', [])
         medication_resources = [
@@ -240,9 +244,13 @@ def precise_hbr_patient_view():
         patient_name = "Patient"
         if patient_data.get('name') and len(patient_data['name']) > 0:
             name_parts = patient_data['name'][0]
-            given = ' '.join(name_parts.get('given', []))
-            family = name_parts.get('family', '')
-            patient_name = f"{given} {family}".strip() or "Patient"
+            # Try text field first (for Taiwan FHIR format)
+            if name_parts.get('text'):
+                patient_name = name_parts.get('text')
+            else:
+                given = ' '.join(name_parts.get('given', []))
+                family = name_parts.get('family', '')
+                patient_name = f"{given} {family}".strip() or "Patient"
         
         # Check medications for high bleeding risk
         medications = prefetch.get('medications', {}).get('entry', [])
