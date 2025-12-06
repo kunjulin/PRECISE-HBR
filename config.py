@@ -26,6 +26,12 @@ class Config:
     REDIRECT_URI = os.environ.get('SMART_REDIRECT_URI')
     SCOPES = "launch patient/Patient.read patient/Observation.read patient/Condition.read patient/MedicationRequest.read patient/Procedure.read fhirUser openid profile online_access user/Patient.read user/Observation.read user/Condition.read user/MedicationRequest.read user/Procedure.read"
 
+    # Default FHIR Server Configuration (can be overridden via environment variable)
+    DEFAULT_FHIR_SERVER = os.environ.get('DEFAULT_FHIR_SERVER', 'https://launch.smarthealthit.org/v/r4/fhir')
+    
+    # Default Test Patient ID (can be overridden via environment variable)
+    DEFAULT_TEST_PATIENT_ID = os.environ.get('DEFAULT_TEST_PATIENT_ID', 'smart-1288992')
+    
     # Cerner Sandbox Configuration (as a fallback or for specific testing)
     CERNER_SANDBOX_CONFIG = {
         'fhir_base': 'https://fhir-open.cerner.com/r4/ec2458f2-1e24-41c8-b71b-0e701af7583d',

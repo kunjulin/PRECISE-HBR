@@ -12,6 +12,7 @@ from fhir_data_service import (
     get_precise_hbr_display_info,
     CDSS_CONFIG
 )
+from config import Config
 
 views_bp = Blueprint('views', __name__)
 
@@ -22,9 +23,9 @@ def normalize_fhir_server_url(url):
     """
     Normalize FHIR server URL to ensure it has the correct format.
     Handles common URL patterns:
-    - http://10.29.99.18:9091/ -> http://10.29.99.18:9091/fhir/
-    - http://10.29.99.18:9091/fhir -> http://10.29.99.18:9091/fhir/
-    - http://10.29.99.18:9091/fhir/ -> http://10.29.99.18:9091/fhir/
+    - http://example.com:9091/ -> http://example.com:9091/fhir/
+    - http://example.com:9091/fhir -> http://example.com:9091/fhir/
+    - http://example.com:9091/fhir/ -> http://example.com:9091/fhir/
     """
     if not url:
         return url
@@ -35,7 +36,7 @@ def normalize_fhir_server_url(url):
     if not url.endswith('/fhir'):
         # Only append /fhir if it doesn't already contain it in the path
         # This handles cases like:
-        # - http://10.29.99.18:9091/ -> needs /fhir
+        # - http://example.com:9091/ -> needs /fhir
         # - https://launch.smarthealthit.org/v/r4/fhir -> already has /fhir
         if '/fhir' not in url:
             url = f"{url}/fhir"
@@ -165,15 +166,14 @@ def test_mode():
     Development/Test mode - Direct access without OAuth for testing.
     WARNING: Only use this in development environments!
     """
-    # Allow custom FHIR server from URL parameter, or use default
-    # Default to the internal test server
-    test_fhir_server_raw = request.args.get('server', 'http://10.29.99.18:9091/fhir')
+    # Allow custom FHIR server from URL parameter, or use default from config
+    test_fhir_server_raw = request.args.get('server', Config.DEFAULT_FHIR_SERVER)
     
     # Normalize FHIR server URL
     test_fhir_server = normalize_fhir_server_url(test_fhir_server_raw)
     
-    # Allow custom patient ID from URL parameter, or use default
-    test_patient_id = request.args.get('patient_id', '0322400A12345432900000000000000')
+    # Allow custom patient ID from URL parameter, or use default from config
+    test_patient_id = request.args.get('patient_id', Config.DEFAULT_TEST_PATIENT_ID)
     
     # Create a mock session for testing
     session['fhir_data'] = {
@@ -198,9 +198,8 @@ def test_patients():
     """
     Fetch and display a list of patients from a FHIR server for testing.
     """
-    # Get FHIR server from query parameter or use default
-    # Default to the internal test server
-    fhir_server_raw = request.args.get('server', 'http://10.29.99.18:9091/fhir')
+    # Get FHIR server from query parameter or use default from config
+    fhir_server_raw = request.args.get('server', Config.DEFAULT_FHIR_SERVER)
     
     # Normalize FHIR server URL
     fhir_server = normalize_fhir_server_url(fhir_server_raw)
@@ -269,7 +268,7 @@ def test_patients():
     if not patients:
         patients = [
             {
-                'id': '0322400A12345432900000000000000',
+                'id': Config.DEFAULT_TEST_PATIENT_ID,
                 'name': '預設測試患者',
                 'gender': 'Unknown',
                 'birthDate': 'Unknown',
@@ -280,4 +279,6 @@ def test_patients():
     return render_template('test_patients.html', 
                          patients=patients, 
                          fhir_server=fhir_server,
+                         default_fhir_server=Config.DEFAULT_FHIR_SERVER,
+                         default_patient_id=Config.DEFAULT_TEST_PATIENT_ID,
                          error=error)

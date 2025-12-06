@@ -35,7 +35,13 @@ docker-compose up -d --build
 訪問以下 URL 來查看和選擇所有患者：
 
 ```
-http://localhost:8080/test-patients?server=http://10.29.99.18:9091/fhir/
+http://localhost:8080/test-patients
+```
+
+或指定 FHIR 服務器：
+
+```
+http://localhost:8080/test-patients?server=YOUR_FHIR_SERVER_URL
 ```
 
 **功能：**
@@ -53,11 +59,13 @@ http://localhost:8080/test-patients?server=http://10.29.99.18:9091/fhir/
 http://localhost:8080/test-mode
 ```
 
-或指定特定患者：
+或指定特定患者和服務器：
 
 ```
-http://localhost:8080/test-mode?server=http://10.29.99.18:9091/fhir/&patient_id=0322400H12092976400000000000000
+http://localhost:8080/test-mode?server=YOUR_FHIR_SERVER_URL&patient_id=YOUR_PATIENT_ID
 ```
+
+**注意**: 如果不指定 `server` 和 `patient_id` 參數，將使用 `.env` 文件中配置的預設值。
 
 ### 3. Standalone Launch（完整 OAuth）
 
@@ -71,9 +79,14 @@ http://localhost:8080/standalone
 
 ### 默認 FHIR 服務器
 
-應用已配置為使用您的 FHIR 服務器：
-- **服務器地址**: `http://10.29.99.18:9091/fhir/`
-- **FHIR 版本**: R4 (4.0.1)
+應用通過環境變量配置預設 FHIR 服務器。在 `.env` 文件中設置：
+
+```env
+DEFAULT_FHIR_SERVER=http://your-fhir-server-url/fhir
+DEFAULT_TEST_PATIENT_ID=your-default-patient-id
+```
+
+**注意**: `.env` 文件不會上傳到 Git，請根據您的實際環境配置。
 
 ### 切換 FHIR 服務器
 
@@ -104,7 +117,12 @@ http://localhost:8080/standalone
 
 2. **打開瀏覽器訪問測試患者頁面**
    ```
-   http://localhost:8080/test-patients?server=http://10.29.99.18:9091/fhir/
+   http://localhost:8080/test-patients
+   ```
+   
+   或指定 FHIR 服務器：
+   ```
+   http://localhost:8080/test-patients?server=YOUR_FHIR_SERVER_URL
    ```
 
 3. **選擇患者**
@@ -137,7 +155,13 @@ SMART_REDIRECT_URI=http://localhost:8080/callback
 PORT=8080
 FLASK_ENV=development
 FLASK_DEBUG=true
+
+# FHIR 服務器配置（可選，如果不設置將使用代碼中的預設值）
+DEFAULT_FHIR_SERVER=http://your-fhir-server-url/fhir
+DEFAULT_TEST_PATIENT_ID=your-default-patient-id
 ```
+
+**重要**: `.env` 文件不會上傳到 Git，請根據您的實際環境配置這些值。
 
 ## 🐛 故障排除
 

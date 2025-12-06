@@ -108,7 +108,7 @@ def start_app():
     
     print("\n可用端點:")
     print("  - 主頁: http://localhost:8080/")
-    print("  - 測試患者列表: http://localhost:8080/test-patients?server=http://10.29.99.18:9091/fhir/")
+    print("  - 測試患者列表: http://localhost:8080/test-patients")
     print("  - 快速測試模式: http://localhost:8080/test-mode?patient_id=0322400A12345432900000000000000")
     print("  - Standalone Launch: http://localhost:8080/standalone")
     print("\n按 Ctrl+C 停止應用\n")

@@ -407,7 +407,9 @@ def index():
 
 @app.route('/standalone')
 def standalone_launch_page():
-    return render_template('standalone_launch.html')
+    from config import Config
+    return render_template('standalone_launch.html', 
+                         default_fhir_server=Config.DEFAULT_FHIR_SERVER)
 
 @app.route('/initiate-launch', methods=['POST'])
 def initiate_launch():

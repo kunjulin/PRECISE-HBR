@@ -14,10 +14,10 @@
 - ✅ **可以通過 `/test-patients` 訪問** - 說明 FHIR 服務器本身是可用的
 - ❌ **Standalone Launch 失敗** - 說明服務器不支持 SMART on FHIR 配置發現
 
-**服務器**: `http://10.29.99.18:9091/fhir`
-- 這是一個內部/本地 FHIR 服務器
+**服務器**: 請在 `.env` 文件中配置 `DEFAULT_FHIR_SERVER`
+- 這通常是內部/本地 FHIR 服務器
 - 支持標準 FHIR R4 API（可以獲取患者數據）
-- 不支持 SMART on FHIR 配置發現（無法進行 OAuth 授權）
+- 可能不支持 SMART on FHIR 配置發現（無法進行 OAuth 授權）
 
 ## 🎯 解決方案
 
@@ -29,7 +29,12 @@
 
 1. **訪問測試患者頁面**:
    ```
-   http://localhost:8080/test-patients?server=http://10.29.99.18:9091/fhir
+   http://localhost:8080/test-patients
+   ```
+   
+   或指定服務器：
+   ```
+   http://localhost:8080/test-patients?server=YOUR_FHIR_SERVER_URL
    ```
 
 2. **選擇患者**:
@@ -42,10 +47,12 @@
 
 #### 選項 B: 直接使用測試模式
 
-訪問以下 URL（替換 `PATIENT_ID` 為實際患者 ID）:
+訪問以下 URL（替換 `YOUR_FHIR_SERVER_URL` 和 `PATIENT_ID` 為實際值）:
 ```
-http://localhost:8080/test-mode?server=http://10.29.99.18:9091/fhir&patient_id=0322400H12092976400000000000000
+http://localhost:8080/test-mode?server=YOUR_FHIR_SERVER_URL&patient_id=PATIENT_ID
 ```
+
+**注意**: 如果不指定參數，將使用 `.env` 文件中配置的 `DEFAULT_FHIR_SERVER` 和 `DEFAULT_TEST_PATIENT_ID`。
 
 ### 方案 2: 使用支持 SMART 的公開服務器
 
@@ -110,13 +117,24 @@ http://localhost:8080/test-mode?server=http://10.29.99.18:9091/fhir&patient_id=0
 
 ## 📝 使用建議
 
-### 對於您的服務器 (`http://10.29.99.18:9091/fhir`)
+### 對於內部 FHIR 服務器
 
 **推薦工作流程**:
 
-1. **開發和測試功能**:
+1. **配置預設服務器**（在 `.env` 文件中）:
+   ```env
+   DEFAULT_FHIR_SERVER=http://your-internal-server/fhir
+   DEFAULT_TEST_PATIENT_ID=your-default-patient-id
    ```
-   http://localhost:8080/test-patients?server=http://10.29.99.18:9091/fhir
+
+2. **開發和測試功能**:
+   ```
+   http://localhost:8080/test-patients
+   ```
+   
+   或指定服務器：
+   ```
+   http://localhost:8080/test-patients?server=YOUR_FHIR_SERVER_URL
    ```
    - 無需 OAuth
    - 快速測試
