@@ -26,6 +26,62 @@ python APP.py
 docker-compose up -d --build
 ```
 
+## 🛑 停止服務
+
+### 方法 1: 使用 Ctrl+C（推薦）
+
+如果應用在終端中運行，直接按 `Ctrl+C` 即可停止服務。
+
+**Windows PowerShell/CMD:**
+- 按 `Ctrl+C` 停止服務
+
+**Linux/Mac:**
+- 按 `Ctrl+C` 停止服務
+
+### 方法 2: 查找並終止進程
+
+如果應用在後台運行或無法使用 Ctrl+C：
+
+**Windows:**
+```powershell
+# 查找佔用端口 8080 的進程
+netstat -ano | findstr :8080
+
+# 終止進程（替換 PID 為實際進程 ID）
+taskkill /PID <PID> /F
+```
+
+或使用 PowerShell：
+```powershell
+# 查找並終止 Python 進程
+Get-Process python | Where-Object { $_.Path -like "*python*" } | Stop-Process -Force
+```
+
+**Linux/Mac:**
+```bash
+# 查找佔用端口 8080 的進程
+lsof -ti:8080
+
+# 終止進程
+kill -9 $(lsof -ti:8080)
+
+# 或查找 Python 進程
+ps aux | grep python
+kill -9 <PID>
+```
+
+### 方法 3: 停止 Docker 容器
+
+如果使用 Docker Compose 啟動：
+
+```bash
+# 停止並移除容器
+docker-compose down
+
+# 或僅停止容器（保留數據）
+docker-compose stop
+```
+
 ## 📋 訪問所有患者
 
 應用啟動後，您可以通過以下方式訪問所有患者：
@@ -194,6 +250,37 @@ DEFAULT_TEST_PATIENT_ID=your-default-patient-id
 - 確認應用正在運行
 - 檢查防火牆設置
 - 確認端口 8080 未被其他程序佔用
+
+### 無法停止服務
+
+如果使用 `Ctrl+C` 無法停止服務，可以嘗試以下方法：
+
+1. **檢查進程是否仍在運行**：
+   ```bash
+   # Windows
+   netstat -ano | findstr :8080
+   
+   # Linux/Mac
+   lsof -ti:8080
+   ```
+
+2. **強制終止進程**：
+   ```bash
+   # Windows
+   taskkill /F /IM python.exe
+   
+   # Linux/Mac
+   pkill -9 python
+   ```
+
+3. **如果使用 Docker**：
+   ```bash
+   docker-compose down
+   docker ps -a | grep precise-hbr
+   docker kill <container_id>
+   ```
+
+4. **重啟電腦**（最後手段）
 
 ## 📞 支持
 
