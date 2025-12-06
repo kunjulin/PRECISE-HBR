@@ -84,12 +84,15 @@ TARGET_UNITS = {
     'WBC': {
         'unit': '10*9/l',
         # Factors to convert a source unit TO the target unit (10^9/L)
+        # Note: Unit normalization handles variations like ^ vs *, µ vs u, case differences
         'factors': {
             '10*3/ul': 1.0,     # 10^3/µL = K/µL = 10^9/L (same unit, different notation)
+            '10^3/ul': 1.0,     # 10^3/µL (with caret notation - will be normalized to 10*3/ul)
             'k/ul': 1.0,        # K/µL = thousands/µL = 10^9/L
             '/ul': 0.001,       # cells/µL ÷ 1000 = 10^9/L (1000 cells/µL = 1 ×10^9/L)
             '/mm3': 0.001,      # cells/mm³ = cells/µL, same conversion
             '10^9/l': 1.0,      # Already in target unit
+            '10*9/l': 1.0,      # Already in target unit (with asterisk)
             'giga/l': 1.0       # Giga/L = 10^9/L
         }
     },
@@ -949,36 +952,60 @@ def get_value_from_observation(obs, unit_system):
     if value is None or not isinstance(value, (int, float)):
         return None
         
-    source_unit = value_quantity.get('unit', '').lower()
+    source_unit_raw = value_quantity.get('unit', '')
     target_unit = unit_system['unit']
     
     # 0. If unit is missing/empty, assume the value is already in the target unit
     # This handles FHIR servers that don't provide unit information
-    if not source_unit or source_unit.strip() == '':
+    if not source_unit_raw or source_unit_raw.strip() == '':
         logging.warning(f"No unit provided for Observation value {value}. "
                        f"Assuming it is already in target unit '{target_unit}'.")
         return value
     
+    # Normalize unit: convert to lowercase and normalize notation variations
+    # Handle common variations: ^ to *, µ to u, etc.
+    source_unit = source_unit_raw.lower().strip()
+    # Normalize caret (^) to asterisk (*) for exponent notation
+    source_unit = source_unit.replace('^', '*')
+    # Normalize micro symbol (µ) to 'u'
+    source_unit = source_unit.replace('µ', 'u').replace('μ', 'u')
+    # Remove spaces
+    source_unit = source_unit.replace(' ', '')
+    
     # 1. Direct match
-    if source_unit == target_unit:
+    if source_unit == target_unit.lower():
         return value
 
     # 2. Check for common alternative writings of the target unit
     # (e.g., "g/dL" vs "g/dl"). This is a simple case-insensitive check.
-    if source_unit.lower() == target_unit.lower():
+    if source_unit == target_unit.lower():
         return value
 
     # 3. Attempt conversion
     conversion_factors = unit_system.get('factors', {})
-    if source_unit in conversion_factors:
-        conversion_factor = conversion_factors[source_unit]
+    # Also normalize keys in conversion_factors for comparison
+    normalized_factors = {}
+    for key, factor in conversion_factors.items():
+        normalized_key = key.lower().replace('^', '*').replace('µ', 'u').replace('μ', 'u').replace(' ', '')
+        normalized_factors[normalized_key] = factor
+    
+    if source_unit in normalized_factors:
+        conversion_factor = normalized_factors[source_unit]
         converted_value = value * conversion_factor
-        logging.info(f"Converted {value} {source_unit} to {converted_value:.2f} {target_unit}")
+        logging.info(f"Converted {value} {source_unit_raw} ({source_unit}) to {converted_value:.2f} {target_unit}")
+        return converted_value
+    
+    # Also check original source_unit_raw (case-insensitive) in original factors
+    source_unit_original_lower = source_unit_raw.lower()
+    if source_unit_original_lower in conversion_factors:
+        conversion_factor = conversion_factors[source_unit_original_lower]
+        converted_value = value * conversion_factor
+        logging.info(f"Converted {value} {source_unit_raw} to {converted_value:.2f} {target_unit}")
         return converted_value
 
     # 4. If no conversion is possible, log a warning and return None to prevent miscalculation
     logging.warning(f"Unit mismatch and no conversion rule found for Observation. "
-                    f"Received: '{source_unit}', Expected: '{target_unit}'. Cannot proceed with this value.")
+                   f"Received: '{source_unit_raw}' (normalized: '{source_unit}'), Expected: '{target_unit}'. Cannot proceed with this value.")
     return None
 
 def calculate_egfr(cr_val, age, gender):
