@@ -128,10 +128,32 @@ def launch():
 
     smart_config = get_smart_config(iss)
     if not smart_config:
+        # Provide helpful suggestions based on the server
+        suggestions = [
+            f"無法從服務器獲取 SMART 配置: {iss}",
+            "此服務器可能不支持 SMART on FHIR 標準配置發現。"
+        ]
+        
+        # Check if this is a local/internal server
+        if 'localhost' in iss or '127.0.0.1' in iss or '10.' in iss or '192.168.' in iss:
+            suggestions.extend([
+                "對於內部/本地 FHIR 服務器，建議使用以下方式：",
+                "1. 使用測試模式（無需 OAuth）：訪問 /test-patients 或 /test-mode",
+                "2. 如果服務器支持 SMART，請確認已正確配置授權端點",
+                "3. 聯繫服務器管理員確認 SMART on FHIR 支持狀態"
+            ])
+        else:
+            suggestions.extend([
+                "建議使用支持 SMART on FHIR 的公開測試服務器：",
+                "- SMART Health IT: https://launch.smarthealthit.org/v/r4/fhir",
+                "- Logica Sandbox: https://r4.smarthealthit.org",
+                "或使用測試模式進行功能測試（無需 OAuth）"
+            ])
+        
         return render_error_page(
             title="Configuration Discovery Error",
             message="Could not discover the SMART on FHIR configuration.",
-            suggestions=[f"Failed to get config from issuer: {iss}"])
+            suggestions=suggestions)
 
     session['smart_config'] = smart_config
     state = str(uuid.uuid4())

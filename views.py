@@ -16,6 +16,34 @@ from fhir_data_service import (
 views_bp = Blueprint('views', __name__)
 
 
+# --- Helper Functions ---
+
+def normalize_fhir_server_url(url):
+    """
+    Normalize FHIR server URL to ensure it has the correct format.
+    Handles common URL patterns:
+    - http://10.29.99.18:9091/ -> http://10.29.99.18:9091/fhir/
+    - http://10.29.99.18:9091/fhir -> http://10.29.99.18:9091/fhir/
+    - http://10.29.99.18:9091/fhir/ -> http://10.29.99.18:9091/fhir/
+    """
+    if not url:
+        return url
+    
+    url = url.rstrip('/')
+    
+    # If URL doesn't end with /fhir, check if it needs to be added
+    if not url.endswith('/fhir'):
+        # Only append /fhir if it doesn't already contain it in the path
+        # This handles cases like:
+        # - http://10.29.99.18:9091/ -> needs /fhir
+        # - https://launch.smarthealthit.org/v/r4/fhir -> already has /fhir
+        if '/fhir' not in url:
+            url = f"{url}/fhir"
+    
+    # Ensure trailing slash for consistent API calls
+    return f"{url}/"
+
+
 # --- Session Validation ---
 
 def is_token_expired(token_data):
@@ -138,10 +166,14 @@ def test_mode():
     WARNING: Only use this in development environments!
     """
     # Allow custom FHIR server from URL parameter, or use default
-    test_fhir_server = request.args.get('server', 'https://launch.smarthealthit.org/v/r4/fhir')
+    # Default to the internal test server
+    test_fhir_server_raw = request.args.get('server', 'http://10.29.99.18:9091/fhir')
+    
+    # Normalize FHIR server URL
+    test_fhir_server = normalize_fhir_server_url(test_fhir_server_raw)
     
     # Allow custom patient ID from URL parameter, or use default
-    test_patient_id = request.args.get('patient_id', 'smart-1288992')
+    test_patient_id = request.args.get('patient_id', '0322400A12345432900000000000000')
     
     # Create a mock session for testing
     session['fhir_data'] = {
@@ -167,7 +199,11 @@ def test_patients():
     Fetch and display a list of patients from a FHIR server for testing.
     """
     # Get FHIR server from query parameter or use default
-    fhir_server = request.args.get('server', 'https://launch.smarthealthit.org/v/r4/fhir')
+    # Default to the internal test server
+    fhir_server_raw = request.args.get('server', 'http://10.29.99.18:9091/fhir')
+    
+    # Normalize FHIR server URL
+    fhir_server = normalize_fhir_server_url(fhir_server_raw)
     
     patients = []
     error = None
@@ -176,7 +212,7 @@ def test_patients():
         # Fetch patients from FHIR server
         # Note: Some servers may require authentication, but SMART Health IT allows public access to some resources
         response = requests.get(
-            f"{fhir_server}/Patient",
+            f"{fhir_server}Patient",
             params={'_count': 20},  # Limit to 20 patients
             headers={'Accept': 'application/fhir+json'},
             timeout=30  # Increased timeout for slower servers
@@ -233,10 +269,10 @@ def test_patients():
     if not patients:
         patients = [
             {
-                'id': 'smart-1288992',
-                'name': 'Amy V. Shaw',
-                'gender': 'Female',
-                'birthDate': '2007-03-20',
+                'id': '0322400A12345432900000000000000',
+                'name': '預設測試患者',
+                'gender': 'Unknown',
+                'birthDate': 'Unknown',
                 'description': 'Default test patient (fallback)'
             }
         ]
