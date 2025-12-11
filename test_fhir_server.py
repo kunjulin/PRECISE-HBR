@@ -90,13 +90,13 @@ if working_url:
     print(f"✓ 服務器 URL: {working_url}")
     print("\n可用測試方式：")
     print("\n1. 測試患者列表頁面（推薦，無需 OAuth）：")
-    print(f"   http://localhost:8080/test-patients?server={working_url}")
+    print(f"   http://localhost:8081/test-patients?server={working_url}")
     
     print("\n2. 測試模式（直接指定患者 ID）：")
-    print(f"   http://localhost:8080/test-mode?server={working_url}&patient_id=YOUR_PATIENT_ID")
+    print(f"   http://localhost:8081/test-mode?server={working_url}&patient_id=YOUR_PATIENT_ID")
     
     print("\n3. Standalone Launch（如果服務器支持 SMART）：")
-    print(f"   http://localhost:8080/standalone")
+    print(f"   http://localhost:8081/standalone")
     print(f"   然後輸入服務器 URL: {working_url}")
     
     print("\n" + "=" * 60)

@@ -58,26 +58,31 @@ docker logs -f smart_fhir_app
 
 ### 訪問應用
 
-應用啟動後，訪問 `http://localhost:8080`
+應用啟動後，訪問 `http://localhost:8081`
+
+**啟用網絡訪問（允許其他電腦訪問）:**
+```bash
+python start_app.py --network
+```
 
 ## 🧪 測試選項
 
 ### 選項 1: 快速測試模式（最快）
 直接訪問，無需任何配置：
 ```
-http://localhost:8080/test-mode
+http://localhost:8081/test-mode
 ```
 
 ### 選項 2: 選擇測試患者
 從真實 FHIR 服務器選擇患者：
 ```
-http://localhost:8080/test-patients
+http://localhost:8081/test-patients
 ```
 
 ### 選項 3: Standalone Launch（完整 OAuth）
 完整的 SMART on FHIR 授權流程：
 ```
-http://localhost:8080/standalone
+http://localhost:8081/standalone
 ```
 
 ## 🔧 環境變量
@@ -86,14 +91,14 @@ http://localhost:8080/standalone
 ```env
 FLASK_SECRET_KEY=your-secret-key-here
 SMART_CLIENT_ID=your-client-id
-SMART_REDIRECT_URI=http://localhost:8080/callback
+SMART_REDIRECT_URI=http://localhost:8081/callback
 ```
 
 ### 可選變量
 ```env
 SMART_CLIENT_SECRET=your-client-secret  # 公共客戶端不需要
 FLASK_DEBUG=true  # 開發環境
-PORT=8080
+PORT=8081
 ```
 
 ## 📝 主要修改文件

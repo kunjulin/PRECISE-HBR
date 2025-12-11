@@ -89,7 +89,7 @@ except requests.exceptions.RequestException as e:
 
 # 測試 3: 生成測試模式 URL
 print(f"\n3. 測試模式訪問 URL:")
-test_url = f"http://localhost:8080/test-mode?server={FHIR_SERVER}&patient_id={PATIENT_ID}"
+test_url = f"http://localhost:8081/test-mode?server={FHIR_SERVER}&patient_id={PATIENT_ID}"
 print(f"   {test_url}")
 print("\n   您可以在瀏覽器中訪問此 URL 來測試患者數據")
 

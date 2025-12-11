@@ -14,6 +14,13 @@ start_app.bat
 python start_app.py
 ```
 
+**啟用網絡訪問（允許其他電腦訪問）:**
+```bash
+python start_app.py --network
+```
+
+> **注意**: 使用 `--network` 參數後，應用將綁定到 `0.0.0.0`，允許從網絡上的其他電腦訪問。預設情況下，應用只綁定到 `localhost`（僅本地訪問）。
+
 ### 方法 2: 直接運行 Python
 
 ```bash
@@ -44,8 +51,8 @@ docker-compose up -d --build
 
 **Windows:**
 ```powershell
-# 查找佔用端口 8080 的進程
-netstat -ano | findstr :8080
+# 查找佔用端口 8081 的進程
+netstat -ano | findstr :8081
 
 # 終止進程（替換 PID 為實際進程 ID）
 taskkill /PID <PID> /F
@@ -59,11 +66,11 @@ Get-Process python | Where-Object { $_.Path -like "*python*" } | Stop-Process -F
 
 **Linux/Mac:**
 ```bash
-# 查找佔用端口 8080 的進程
-lsof -ti:8080
+# 查找佔用端口 8081 的進程
+lsof -ti:8081
 
 # 終止進程
-kill -9 $(lsof -ti:8080)
+kill -9 $(lsof -ti:8081)
 
 # 或查找 Python 進程
 ps aux | grep python
@@ -91,13 +98,13 @@ docker-compose stop
 訪問以下 URL 來查看和選擇所有患者：
 
 ```
-http://localhost:8080/test-patients
+http://localhost:8081/test-patients
 ```
 
 或指定 FHIR 服務器：
 
 ```
-http://localhost:8080/test-patients?server=YOUR_FHIR_SERVER_URL
+http://localhost:8081/test-patients?server=YOUR_FHIR_SERVER_URL
 ```
 
 **功能：**
@@ -112,13 +119,13 @@ http://localhost:8080/test-patients?server=YOUR_FHIR_SERVER_URL
 訪問以下 URL 使用默認測試患者：
 
 ```
-http://localhost:8080/test-mode
+http://localhost:8081/test-mode
 ```
 
 或指定特定患者和服務器：
 
 ```
-http://localhost:8080/test-mode?server=YOUR_FHIR_SERVER_URL&patient_id=YOUR_PATIENT_ID
+http://localhost:8081/test-mode?server=YOUR_FHIR_SERVER_URL&patient_id=YOUR_PATIENT_ID
 ```
 
 **注意**: 如果不指定 `server` 和 `patient_id` 參數，將使用 `.env` 文件中配置的預設值。
@@ -128,7 +135,7 @@ http://localhost:8080/test-mode?server=YOUR_FHIR_SERVER_URL&patient_id=YOUR_PATI
 訪問以下 URL 進行完整的 SMART on FHIR 授權：
 
 ```
-http://localhost:8080/standalone
+http://localhost:8081/standalone
 ```
 
 ## 🔧 配置您的 FHIR 服務器
@@ -159,7 +166,7 @@ DEFAULT_TEST_PATIENT_ID=your-default-patient-id
 
 3. **通過 URL 參數**：
    ```
-   http://localhost:8080/test-patients?server=YOUR_FHIR_SERVER_URL
+   http://localhost:8081/test-patients?server=YOUR_FHIR_SERVER_URL
    ```
 
 ## 📝 使用流程
@@ -173,12 +180,12 @@ DEFAULT_TEST_PATIENT_ID=your-default-patient-id
 
 2. **打開瀏覽器訪問測試患者頁面**
    ```
-   http://localhost:8080/test-patients
+   http://localhost:8081/test-patients
    ```
    
    或指定 FHIR 服務器：
    ```
-   http://localhost:8080/test-patients?server=YOUR_FHIR_SERVER_URL
+   http://localhost:8081/test-patients?server=YOUR_FHIR_SERVER_URL
    ```
 
 3. **選擇患者**
@@ -194,11 +201,11 @@ DEFAULT_TEST_PATIENT_ID=your-default-patient-id
 
 | 端點 | 描述 | URL |
 |------|------|-----|
-| 主頁 | 應用主頁 | `http://localhost:8080/` |
-| 測試患者列表 | 查看所有患者 | `http://localhost:8080/test-patients` |
-| 快速測試模式 | 快速測試 | `http://localhost:8080/test-mode` |
-| Standalone Launch | 完整 OAuth | `http://localhost:8080/standalone` |
-| 健康檢查 | 應用狀態 | `http://localhost:8080/health` |
+| 主頁 | 應用主頁 | `http://localhost:8081/` |
+| 測試患者列表 | 查看所有患者 | `http://localhost:8081/test-patients` |
+| 快速測試模式 | 快速測試 | `http://localhost:8081/test-mode` |
+| Standalone Launch | 完整 OAuth | `http://localhost:8081/standalone` |
+| 健康檢查 | 應用狀態 | `http://localhost:8081/health` |
 
 ## ⚙️ 環境配置
 
@@ -207,8 +214,8 @@ DEFAULT_TEST_PATIENT_ID=your-default-patient-id
 ```env
 FLASK_SECRET_KEY=your-secret-key
 SMART_CLIENT_ID=your-client-id
-SMART_REDIRECT_URI=http://localhost:8080/callback
-PORT=8080
+SMART_REDIRECT_URI=http://localhost:8081/callback
+PORT=8081
 FLASK_ENV=development
 FLASK_DEBUG=true
 
@@ -219,13 +226,53 @@ DEFAULT_TEST_PATIENT_ID=your-default-patient-id
 
 **重要**: `.env` 文件不會上傳到 Git，請根據您的實際環境配置這些值。
 
+## 🌐 網絡訪問配置
+
+### 允許其他電腦訪問應用
+
+如果您需要從網絡上的其他電腦訪問應用，請使用 `--network` 參數啟動：
+
+```bash
+python start_app.py --network
+```
+
+**重要提示：**
+- 使用 `--network` 參數後，應用將綁定到 `0.0.0.0:8081`，允許網絡訪問
+- 預設情況下（不使用 `--network`），應用只綁定到 `127.0.0.1:8081`（僅本地訪問）
+- 啟用網絡訪問後，需要配置防火牆規則允許 port 8081
+
+### 配置防火牆（Windows）
+
+以管理員身份運行 PowerShell，執行：
+
+```powershell
+New-NetFirewallRule -DisplayName "PRECISE-HBR Port 8081" -Description "Allow PRECISE-HBR App Network Access" -Direction Inbound -LocalPort 8081 -Protocol TCP -Action Allow -Enabled True
+```
+
+或使用提供的腳本：
+```powershell
+.\open_port_8081_simple.ps1
+```
+
+### 驗證網絡訪問
+
+啟動應用後，從其他電腦訪問：
+```
+http://YOUR_IP_ADDRESS:8081/standalone
+```
+
+查找您的 IP 地址：
+```powershell
+Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike "127.*" -and $_.IPAddress -notlike "169.254.*" }
+```
+
 ## 🐛 故障排除
 
 ### 應用無法啟動
 
-1. 檢查端口 8080 是否被佔用：
+1. 檢查端口 8081 是否被佔用：
    ```bash
-   netstat -ano | findstr :8080
+   netstat -ano | findstr :8081
    ```
 
 2. 檢查依賴是否已安裝：
@@ -249,7 +296,7 @@ DEFAULT_TEST_PATIENT_ID=your-default-patient-id
 
 - 確認應用正在運行
 - 檢查防火牆設置
-- 確認端口 8080 未被其他程序佔用
+- 確認端口 8081 未被其他程序佔用
 
 ### 無法停止服務
 
@@ -258,10 +305,10 @@ DEFAULT_TEST_PATIENT_ID=your-default-patient-id
 1. **檢查進程是否仍在運行**：
    ```bash
    # Windows
-   netstat -ano | findstr :8080
+   netstat -ano | findstr :8081
    
    # Linux/Mac
-   lsof -ti:8080
+   lsof -ti:8081
    ```
 
 2. **強制終止進程**：

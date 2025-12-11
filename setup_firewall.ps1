@@ -24,27 +24,27 @@ Write-Host "✓ 檢測到管理員權限" -ForegroundColor Green
 Write-Host ""
 
 # 檢查現有規則
-$existingRule = Get-NetFirewallRule -DisplayName "PRECISE-HBR Port 8080" -ErrorAction SilentlyContinue
+$existingRule = Get-NetFirewallRule -DisplayName "PRECISE-HBR Port 8081" -ErrorAction SilentlyContinue
 
 if ($existingRule) {
     Write-Host "找到現有規則，正在更新..."
-    Set-NetFirewallRule -DisplayName "PRECISE-HBR Port 8080" -Enabled True
+    Set-NetFirewallRule -DisplayName "PRECISE-HBR Port 8081" -Enabled True
     Write-Host "✓ 防火牆規則已啟用" -ForegroundColor Green
 } else {
     Write-Host "正在創建新的防火牆規則..."
     try {
         $rule = New-NetFirewallRule `
-            -DisplayName "PRECISE-HBR Port 8080" `
+            -DisplayName "PRECISE-HBR Port 8081" `
             -Description "允許 PRECISE-HBR SMART on FHIR 應用的網絡訪問" `
             -Direction Inbound `
-            -LocalPort 8080 `
+            -LocalPort 8081 `
             -Protocol TCP `
             -Action Allow `
             -Enabled True
         
         Write-Host "✓ 防火牆規則已成功創建" -ForegroundColor Green
         Write-Host "  規則名稱: $($rule.DisplayName)"
-        Write-Host "  端口: 8080"
+        Write-Host "  端口: 8081"
         Write-Host "  協議: TCP"
         Write-Host "  操作: Allow"
         Write-Host "  狀態: Enabled"
@@ -60,7 +60,7 @@ Write-Host "設置完成！"
 Write-Host "========================================"
 Write-Host ""
 Write-Host "現在其他電腦可以通過以下地址訪問:"
-Write-Host "  http://10.30.68.163:8080/"
+Write-Host "  http://10.30.68.163:8081/"
 Write-Host ""
 Write-Host "注意: 如果 IP 地址改變，請重新檢查網絡配置"
 Write-Host ""

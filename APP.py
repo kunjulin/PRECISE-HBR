@@ -69,7 +69,14 @@ from flask_cors import CORS
 CERNER_DOMAIN = 'cerner.com'
 
 # Load environment variables from .env file
-load_dotenv()
+# Handle encoding issues - ensure .env file is UTF-8 encoded
+try:
+    load_dotenv()
+except UnicodeDecodeError as e:
+    print(f"ERROR: Failed to load .env file due to encoding issue: {e}")
+    print("Please run: powershell -ExecutionPolicy Bypass -File .\\fix_env_encoding.ps1")
+    print("Or manually convert .env file to UTF-8 encoding")
+    raise
 
 app = Flask(__name__)
 
@@ -402,7 +409,7 @@ def exchange_code():
 @app.route('/')
 def index():
     if is_session_valid():
-        return redirect(url_for('main_page'))
+        return redirect(url_for('views.main_page'))
     return redirect(url_for('standalone_launch_page'))
 
 @app.route('/standalone')
@@ -643,8 +650,8 @@ if __name__ == '__main__':
     else:
         host = os.environ.get("HOST", "127.0.0.1")  # Localhost only for development
     
-    # Use port 8080 for cloud deployments, but allow override
-    port = int(os.environ.get("PORT", 8080))
+    # Use port 8081 for cloud deployments, but allow override
+    port = int(os.environ.get("PORT", 8081))
     
     app.logger.info(f"Server starting on {host}:{port} (debug={debug_mode}, production={is_production})")
     app.run(host=host, port=port, debug=debug_mode)

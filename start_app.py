@@ -82,15 +82,15 @@ def start_app():
     
     print("\n[信息] 正在啟動應用...")
     if allow_network:
-        print("[信息] 應用將在 http://0.0.0.0:8080 上運行（允許網絡訪問）")
+        print("[信息] 應用將在 http://0.0.0.0:8081 上運行（允許網絡訪問）")
         print("\n⚠️  警告: 應用已啟用網絡訪問模式")
         print("   其他電腦可以通過您的 IP 地址訪問此應用")
     else:
-        print("[信息] 應用將在 http://localhost:8080 上運行（僅本地訪問）")
+        print("[信息] 應用將在 http://localhost:8081 上運行（僅本地訪問）")
         print("\n提示: 要允許網絡訪問，請使用: python start_app.py --network")
     
     print("\n本地訪問地址:")
-    print("  - http://localhost:8080/")
+    print("  - http://localhost:8081/")
     
     if allow_network:
         # 嘗試獲取本機 IP 地址
@@ -101,23 +101,23 @@ def start_app():
             local_ip = s.getsockname()[0]
             s.close()
             print("\n網絡訪問地址:")
-            print(f"  - http://{local_ip}:8080/")
+            print(f"  - http://{local_ip}:8081/")
             print("\n其他電腦可以使用上述 IP 地址訪問此應用")
         except:
             print("\n無法自動檢測 IP 地址，請手動查看網絡配置")
     
     print("\n可用端點:")
-    print("  - 主頁: http://localhost:8080/")
-    print("  - 測試患者列表: http://localhost:8080/test-patients")
-    print("  - 快速測試模式: http://localhost:8080/test-mode?patient_id=0322400A12345432900000000000000")
-    print("  - Standalone Launch: http://localhost:8080/standalone")
+    print("  - 主頁: http://localhost:8081/")
+    print("  - 測試患者列表: http://localhost:8081/test-patients")
+    print("  - 快速測試模式: http://localhost:8081/test-mode?patient_id=0322400A12345432900000000000000")
+    print("  - Standalone Launch: http://localhost:8081/standalone")
     print("\n按 Ctrl+C 停止應用\n")
     print("-" * 60)
     
     # 導入並運行應用
     try:
         from APP import app
-        app.run(host=host, port=8080, debug=True)
+        app.run(host=host, port=8081, debug=True)
     except KeyboardInterrupt:
         print("\n\n[信息] 應用已停止")
     except Exception as e:

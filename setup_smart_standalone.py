@@ -40,7 +40,7 @@ def check_env_file():
             print("\n1. 訪問: https://launch.smarthealthit.org/register")
             print("2. 註冊新應用:")
             print("   - App Name: PRECISE-HBR")
-            print("   - Redirect URI: http://localhost:8080/callback")
+            print("   - Redirect URI: http://localhost:8081/callback")
             print("   - Launch Type: Standalone Launch")
             print("   - Scopes: 選擇需要的權限")
             print("3. 複製生成的 Client ID")
@@ -56,7 +56,7 @@ def check_env_file():
     
     # 檢查其他必要配置
     required_vars = {
-        'SMART_REDIRECT_URI': 'http://localhost:8080/callback',
+        'SMART_REDIRECT_URI': 'http://localhost:8081/callback',
         'FLASK_SECRET_KEY': None
     }
     
@@ -130,7 +130,7 @@ def main():
         print("\n現在可以啟動應用了:")
         print("  python start_app.py")
         print("\n啟動後訪問:")
-        print("  http://localhost:8080/standalone")
+        print("  http://localhost:8081/standalone")
     else:
         print("\n" + "=" * 60)
         print("[錯誤] 配置需要更新")

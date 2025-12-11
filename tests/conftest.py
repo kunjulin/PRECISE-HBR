@@ -20,7 +20,7 @@ def app():
     os.environ['SECRET_KEY'] = 'test-secret-key-for-testing-only'
     os.environ['SMART_CLIENT_ID'] = 'test-client-id'
     os.environ['SMART_CLIENT_SECRET'] = 'test-client-secret'
-    os.environ['SMART_REDIRECT_URI'] = 'http://localhost:8080/callback'
+    os.environ['SMART_REDIRECT_URI'] = 'http://localhost:8081/callback'
     os.environ['SMART_EHR_BASE_URL'] = 'https://fhir.example.com'
     
     # Mock Google Cloud Secret Manager
